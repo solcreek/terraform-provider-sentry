@@ -93,6 +93,24 @@ resource "sentry_project_ownership" "api" {
 				},
 			},
 			{
+				// A heredoc's trailing newline, which Sentry strips, is no diff:
+				// neither when applied nor on the next plan.
+				Config: config("  raw = <<-EOT\n    path:src/* #backend\n  EOT\n  fallthrough     = false\n  auto_assignment = \"Turn off Auto-Assignment\""),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project_ownership.api", "raw", "path:src/* #backend\n"),
+					func(*terraform.State) error {
+						if got := *ownership().Raw; got != "path:src/* #backend" {
+							return fmt.Errorf("stored raw = %q", got)
+						}
+						return nil
+					},
+				),
+			},
+			{
+				Config:           config("  raw = <<-EOT\n    path:src/* #backend\n  EOT\n  fallthrough     = false\n  auto_assignment = \"Turn off Auto-Assignment\""),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}},
+			},
+			{
 				Config:      config(`  raw = "not-a-rule"`),
 				ExpectError: regexp.MustCompile(`(?s)Unable to update project ownership.*Parse error`),
 			},

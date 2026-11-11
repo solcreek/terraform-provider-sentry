@@ -33,7 +33,7 @@ resource "sentry_project_ownership" "api" {
 ### Required
 
 - `project_id` (String) ID of the project, e.g. `sentry_project.example.id`.
-- `raw` (String) The ownership rules, in Sentry's [ownership rule syntax](https://docs.sentry.io/product/issues/ownership-rules/), one per line, e.g. `path:src/checkout/* #payments`. Sentry stores the text as given.
+- `raw` (String) The ownership rules, in Sentry's [ownership rule syntax](https://docs.sentry.io/product/issues/ownership-rules/), one per line, e.g. `path:src/checkout/* #payments`. Sentry strips whitespace around the text, so a trailing newline, as a heredoc leaves, is not a difference.
 
 ### Optional
 

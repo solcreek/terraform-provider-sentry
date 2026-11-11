@@ -675,6 +675,8 @@ func (f *fakeSentry) serveOwnership(w http.ResponseWriter, method, projectRef st
 				writeJSON(w, 400, map[string]any{"raw": []string{"Parse error: 'ownership' (line 1, column 1)"}})
 				return
 			}
+			// Sentry strips surrounding whitespace (observed 2026-11-11).
+			raw = strings.TrimSpace(raw)
 			o.Raw = &raw
 			if raw == "" {
 				o.Raw = nil

@@ -5,6 +5,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -47,9 +48,20 @@ type projectOwnershipModel struct {
 	CodeownersAutoSync types.Bool   `tfsdk:"codeowners_auto_sync"`
 }
 
+// sameRules reports whether two rule texts differ only in surrounding
+// whitespace. Sentry strips it when storing (observed on sentry.io,
+// 2026-11-11: a trailing newline, as a heredoc leaves, is dropped).
+func sameRules(a, b string) bool {
+	return strings.TrimSpace(a) == strings.TrimSpace(b)
+}
+
+// fill copies what Sentry reports. The configured spelling of the rules is
+// kept when it only differs in surrounding whitespace.
 func (m *projectOwnershipModel) fill(o *sentry.Ownership) {
 	m.ID = m.ProjectID
-	m.Raw = types.StringValue(o.RawText())
+	if m.Raw.IsNull() || m.Raw.IsUnknown() || !sameRules(m.Raw.ValueString(), o.RawText()) {
+		m.Raw = types.StringValue(o.RawText())
+	}
 	m.Fallthrough = types.BoolValue(o.Fallthrough)
 	m.AutoAssignment = types.StringValue(o.AutoAssignment)
 	m.CodeownersAutoSync = types.BoolPointerValue(o.CodeownersAutoSync)
@@ -94,7 +106,8 @@ func (r *projectOwnershipResource) Schema(_ context.Context, _ resource.SchemaRe
 			"raw": schema.StringAttribute{
 				MarkdownDescription: "The ownership rules, in Sentry's " +
 					"[ownership rule syntax](https://docs.sentry.io/product/issues/ownership-rules/), one per line, " +
-					"e.g. `path:src/checkout/* #payments`. Sentry stores the text as given.",
+					"e.g. `path:src/checkout/* #payments`. Sentry strips whitespace around the text, so a " +
+					"trailing newline, as a heredoc leaves, is not a difference.",
 				Required: true,
 			},
 			"fallthrough": schema.BoolAttribute{
@@ -135,9 +148,9 @@ func (r *projectOwnershipResource) apply(ctx context.Context, plan *projectOwner
 	}
 	wanted := plan.Raw.ValueString()
 	plan.fill(o)
-	if got := plan.Raw.ValueString(); got != wanted {
-		return fmt.Errorf("the rules Sentry stored differ from the ones sent (%d bytes sent, %d stored); "+
-			"write `raw` exactly as Sentry returns it", len(wanted), len(got))
+	if got := o.RawText(); !sameRules(got, wanted) {
+		return fmt.Errorf("the rules Sentry stored differ from the ones sent beyond surrounding whitespace "+
+			"(%d bytes sent, %d stored); write `raw` as Sentry returns it", len(wanted), len(got))
 	}
 	return nil
 }
