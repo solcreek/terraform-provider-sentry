@@ -39,6 +39,10 @@ const apiPrefix = "/api/0"
 // operations at once.
 const maxConcurrent = 4
 
+// maxNetworkRetries is how often a GET is repeated after a transport error
+// (timeout, reset connection).
+const maxNetworkRetries = 2
+
 // maxRetryWait bounds how long one rate-limit back-off may sleep.
 const maxRetryWait = 60 * time.Second
 
@@ -198,6 +202,16 @@ func (c *Client) send(ctx context.Context, method, path string, query url.Values
 		}
 		<-c.slots
 		if err != nil {
+			// A read that died on the network is safe to repeat; a write is
+			// not, since it may have landed.
+			if method == http.MethodGet && ctx.Err() == nil && attempt < maxNetworkRetries {
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-time.After(time.Duration(1<<attempt) * c.retryBase):
+				}
+				continue
+			}
 			return nil, fmt.Errorf("%s %s: %w", method, path, err)
 		}
 

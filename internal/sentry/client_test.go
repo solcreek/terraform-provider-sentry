@@ -276,3 +276,48 @@ func TestInboundFilterDecoding(t *testing.T) {
 		t.Error("a string for active should be an error")
 	}
 }
+
+// failingTransport fails the first n round trips with a transport error.
+type failingTransport struct {
+	fail  int32
+	calls atomic.Int32
+	next  http.RoundTripper
+}
+
+func (f *failingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if f.calls.Add(1) <= f.fail {
+		return nil, fmt.Errorf("connection reset by peer")
+	}
+	return f.next.RoundTrip(r)
+}
+
+func TestNetworkErrorsRetryReadsOnly(t *testing.T) {
+	var served atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		served.Add(1)
+		_, _ = w.Write([]byte(`{"id":"1","slug":"acme","name":"Acme"}`))
+	}))
+	t.Cleanup(srv.Close)
+	newClient := func(fail int32) (*Client, *failingTransport) {
+		tr := &failingTransport{fail: fail, next: http.DefaultTransport}
+		c := New("token", WithBaseURL(srv.URL), WithHTTPClient(&http.Client{Transport: tr}))
+		c.retryBase = time.Millisecond
+		return c, tr
+	}
+	ctx := context.Background()
+
+	c, tr := newClient(2)
+	if _, err := c.GetOrganization(ctx, "acme"); err != nil || tr.calls.Load() != 3 {
+		t.Fatalf("GET after two transport errors: err = %v, %d attempts", err, tr.calls.Load())
+	}
+	c, tr = newClient(3)
+	if _, err := c.GetOrganization(ctx, "acme"); err == nil || tr.calls.Load() != 3 {
+		t.Fatalf("GET gives up after %d retries: err = %v, %d attempts", maxNetworkRetries, err, tr.calls.Load())
+	}
+	// A write may have landed before the connection died: never repeated.
+	before := served.Load()
+	c, tr = newClient(1)
+	if _, err := c.CreateTeam(ctx, "acme", "Backend", ""); err == nil || tr.calls.Load() != 1 || served.Load() != before {
+		t.Fatalf("POST must not be retried: err = %v, %d attempts", err, tr.calls.Load())
+	}
+}
