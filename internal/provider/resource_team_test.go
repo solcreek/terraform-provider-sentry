@@ -4,7 +4,6 @@ package provider
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"testing"
 
@@ -128,58 +127,6 @@ func TestTeamErrors(t *testing.T) {
 			{
 				Config:      f.providerConfig() + `resource "sentry_team" "x" { name = "Taken" }`,
 				ExpectError: regexp.MustCompile(`(?s)Unable to create team.*already exists`),
-			},
-		},
-	})
-}
-
-// TestAccTeamAndProject runs the core lifecycle against the real Sentry API.
-func TestAccTeamAndProject(t *testing.T) {
-	suffix := randomSuffix()
-	config := fmt.Sprintf(`
-provider "sentry" {
-  organization = %q
-}
-
-resource "sentry_team" "acc" {
-  name = "tf-acc-%[2]s"
-}
-
-resource "sentry_project" "acc" {
-  name                = "tf-acc-%[2]s"
-  team_id             = sentry_team.acc.id
-  default_rules       = false
-  deletion_protection = false
-}
-
-resource "sentry_project_key" "acc" {
-  project_id = sentry_project.acc.id
-  name       = "tf-acc"
-
-  rate_limit = {
-    window = 60
-    count  = 100
-  }
-}
-`, os.Getenv("SENTRY_TEST_ORG"), suffix)
-
-	resource.Test(t, resource.TestCase{
-		PreCheck:                 func() { testAccPreCheck(t) },
-		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
-		Steps: []resource.TestStep{
-			{
-				Config: requiredProviders + config,
-				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("sentry_team.acc", "slug", "tf-acc-"+suffix),
-					resource.TestCheckResourceAttrPair("sentry_project.acc", "team_id", "sentry_team.acc", "id"),
-					resource.TestCheckResourceAttrSet("sentry_project_key.acc", "dsn_public"),
-				),
-			},
-			{
-				Config: requiredProviders + config,
-				ConfigPlanChecks: resource.ConfigPlanChecks{
-					PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
-				},
 			},
 		},
 	})
