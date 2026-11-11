@@ -144,3 +144,43 @@ resource "sentry_project_key" "spare" {
 		}},
 	})
 }
+
+// On a plan without key rate limits Sentry drops the setting silently; the
+// provider must say so instead of failing with an inconsistent result.
+func TestProjectKeyRateLimitIgnoredByPlan(t *testing.T) {
+	f := newFakeSentry(t)
+	p := f.addProject("API", f.addTeam("Backend"))
+	f.mutate(func() { f.noRateLimits = true })
+	config := func(limit string) string {
+		return f.providerConfig() + fmt.Sprintf(`
+resource "sentry_project_key" "web" {
+  project_id = %q
+  name       = "Web"
+%s
+}
+`, p.ID, limit)
+	}
+	limit := "  rate_limit = {\n    window = 60\n    count  = 100\n  }"
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      config(limit),
+				ExpectError: regexp.MustCompile(`Sentry ignored the rate limit`),
+			},
+			{
+				// Without the limit the same key settles.
+				Config: config(""),
+				Check:  resource.TestCheckNoResourceAttr("sentry_project_key.web", "rate_limit.window"),
+			},
+			{
+				// Adding it later is reported the same way.
+				Config:      config(limit),
+				ExpectError: regexp.MustCompile(`Sentry ignored the rate limit`),
+			},
+			{
+				Config: config(""),
+			},
+		},
+	})
+}

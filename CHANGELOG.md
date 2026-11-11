@@ -19,7 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Import by `<project>/<team>`, each a slug or ID.
 - `sentry_project_key` resource: a client key with an optional rate limit and
   `is_active`; exports the DSNs and the other ingestion endpoints. Import by
-  `<project>/<key_id>`.
+  `<project>/<key_id>`. Where the organization's plan has no key rate
+  limits, Sentry drops `rate_limit` silently; the provider reports that as an
+  error.
 - `sentry_organization`, `sentry_team`, `sentry_project` and
   `sentry_project_key` data sources.
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and

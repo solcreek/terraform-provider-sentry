@@ -44,6 +44,9 @@ type fakeSentry struct {
 	teams    []*fakeTeam
 	projects []*fakeProject
 	pageSize int
+	// noRateLimits models a plan without key rate limits: the field is
+	// accepted and dropped, as observed on sentry.io (2026-11-11).
+	noRateLimits bool
 }
 
 type fakeTeam struct {
@@ -480,7 +483,7 @@ func (f *fakeSentry) serveKeys(w http.ResponseWriter, r *http.Request, projectRe
 			if k.Name == "" {
 				k.Name = "Generated Name"
 			}
-			if rl, ok := body["rateLimit"].(map[string]any); ok {
+			if rl, ok := body["rateLimit"].(map[string]any); ok && !f.noRateLimits {
 				k.RateLimit = rl
 			}
 			p.Keys = append(p.Keys, k)
@@ -513,6 +516,9 @@ func (f *fakeSentry) serveKeys(w http.ResponseWriter, r *http.Request, projectRe
 		}
 		if raw, present := body["rateLimit"]; present {
 			key.RateLimit, _ = raw.(map[string]any) // an explicit null removes it
+			if f.noRateLimits {
+				key.RateLimit = nil
+			}
 		}
 		writeJSON(w, 200, f.keyJSON(p, key))
 	case http.MethodDelete:

@@ -40,7 +40,7 @@ output "sentry_dsn" {
 ### Optional
 
 - `is_active` (Boolean) Whether the key accepts events. Defaults to `true`.
-- `rate_limit` (Attributes) Cap on the events the key accepts. Without it the key is not rate limited. (see [below for nested schema](#nestedatt--rate_limit))
+- `rate_limit` (Attributes) Cap on the events the key accepts. Without it the key is not rate limited. Not every Sentry plan has key rate limits; where it is missing, Sentry drops the setting and the provider reports an error. (see [below for nested schema](#nestedatt--rate_limit))
 
 ### Read-Only
 

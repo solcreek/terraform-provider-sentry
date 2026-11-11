@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -77,6 +78,20 @@ func (m *projectKeyModel) rateLimit() *sentry.RateLimit {
 	return &sentry.RateLimit{Window: m.RateLimit.Window.ValueInt64(), Count: m.RateLimit.Count.ValueInt64()}
 }
 
+// rateLimitIgnored reports that a rate limit was sent and Sentry dropped it.
+// Sentry accepts the field and answers 2xx on plans without key rate limits
+// (the project lacks the "rate-limits" feature), but stores nothing
+// (observed on sentry.io, 2026-11-11).
+func rateLimitIgnored(want *sentry.RateLimit, got *sentry.ProjectKey) bool {
+	return want != nil && got.RateLimit == nil
+}
+
+const rateLimitIgnoredSummary = "Sentry ignored the rate limit"
+
+const rateLimitIgnoredDetail = "Sentry accepted the request but did not store `rate_limit`. Client key rate limits " +
+	"are not part of every Sentry plan; without them the API drops the setting silently. Remove `rate_limit` " +
+	"from the configuration, or upgrade the organization's plan."
+
 func (r *projectKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_project_key"
 }
@@ -110,8 +125,10 @@ func (r *projectKeyResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				Default:             booldefault.StaticBool(true),
 			},
 			"rate_limit": schema.SingleNestedAttribute{
-				MarkdownDescription: "Cap on the events the key accepts. Without it the key is not rate limited.",
-				Optional:            true,
+				MarkdownDescription: "Cap on the events the key accepts. Without it the key is not rate limited. " +
+					"Not every Sentry plan has key rate limits; where it is missing, Sentry drops the setting " +
+					"and the provider reports an error.",
+				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"window": schema.Int64Attribute{
 						MarkdownDescription: "Length of the window in seconds.",
@@ -188,8 +205,12 @@ func (r *projectKeyResource) Create(ctx context.Context, req resource.CreateRequ
 		}
 		key = updated
 	}
+	ignored := rateLimitIgnored(plan.rateLimit(), key)
 	resp.Diagnostics.Append(plan.fill(ctx, key)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if ignored {
+		resp.Diagnostics.AddAttributeError(path.Root("rate_limit"), rateLimitIgnoredSummary, rateLimitIgnoredDetail)
+	}
 }
 
 func (r *projectKeyResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -224,8 +245,12 @@ func (r *projectKeyResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Unable to update client key", err.Error())
 		return
 	}
+	ignored := rateLimitIgnored(plan.rateLimit(), key)
 	resp.Diagnostics.Append(plan.fill(ctx, key)...)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if ignored {
+		resp.Diagnostics.AddAttributeError(path.Root("rate_limit"), rateLimitIgnoredSummary, rateLimitIgnoredDetail)
+	}
 }
 
 func (r *projectKeyResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
