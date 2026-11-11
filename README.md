@@ -39,7 +39,7 @@ Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
 ## Usage
 
 > [!IMPORTANT]
-> The provider is meant for the **OpenTofu Registry**, so always use the
+> The provider is published on the **OpenTofu Registry**, so always use the
 > **full** `registry.opentofu.org/solcreek/sentry` address. It works with both
 > OpenTofu and Terraform. The short `solcreek/sentry` form only works with
 > OpenTofu: Terraform resolves short addresses against `registry.terraform.io`.
