@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sentry_organization_member` resource: invites an email address with an
   organization role and removes the member, or withdraws the invitation, on
   destroy. Import by email or member ID.
+- `sentry_team_member` resource: puts an organization member on a team.
+  Import by `<team>/<member_id>`.
 - `sentry_organization`, `sentry_organization_member`, `sentry_team`,
   `sentry_project` and `sentry_project_key` data sources.
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and

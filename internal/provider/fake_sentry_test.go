@@ -48,6 +48,9 @@ type fakeSentry struct {
 	projects []*fakeProject
 	members  []*fakeMember
 	pageSize int
+	// closedTeams makes adding a member answer 202 (an access request), as
+	// Sentry does when the token may not add members to a team directly.
+	closedTeams bool
 	// noRateLimits models a plan without key rate limits: the field is
 	// accepted and dropped, as observed on sentry.io (2026-11-11).
 	noRateLimits bool
@@ -359,6 +362,9 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	case route == "GET organizations/":
 		writeJSON(w, 200, map[string]any{"id": fakeOrgID, "slug": fakeOrgSlug, "name": "Acme Inc"})
 
+	case parts[0] == "organizations" && len(parts) == 6 && parts[2] == "members" && parts[4] == "teams":
+		f.serveMemberTeam(w, r.Method, arg(3), arg(5))
+
 	case parts[0] == "organizations" && len(parts) >= 3 && len(parts) <= 4 && parts[2] == "members":
 		memberID := ""
 		if len(parts) == 4 {
@@ -465,6 +471,9 @@ func (f *fakeSentry) serveTeam(w http.ResponseWriter, method, ref string, body m
 		f.teams = kept
 		for _, p := range f.projects {
 			f.removeProjectTeam(p, t.ID)
+		}
+		for _, m := range f.members {
+			m.TeamIDs = slices.DeleteFunc(m.TeamIDs, func(id string) bool { return id == t.ID })
 		}
 		w.WriteHeader(204)
 	default:
@@ -819,6 +828,35 @@ func (f *fakeSentry) serveMembers(w http.ResponseWriter, r *http.Request, member
 		}
 		f.members = kept
 		w.WriteHeader(204)
+	default:
+		w.WriteHeader(405)
+	}
+}
+
+// serveMemberTeam models team membership following the API reference: adding
+// answers 201, or 204 when the member is already on the team, or 202 when
+// only an access request was filed. Not yet verified live.
+func (f *fakeSentry) serveMemberTeam(w http.ResponseWriter, method, memberID, teamRef string) {
+	m, t := f.member(memberID), f.team(teamRef)
+	if m == nil || t == nil {
+		notFound(w)
+		return
+	}
+	on := slices.Contains(m.TeamIDs, t.ID)
+	switch method {
+	case http.MethodPost:
+		switch {
+		case on:
+			w.WriteHeader(204)
+		case f.closedTeams:
+			w.WriteHeader(202)
+		default:
+			m.TeamIDs = append(m.TeamIDs, t.ID)
+			writeJSON(w, 201, f.teamJSON(t))
+		}
+	case http.MethodDelete:
+		m.TeamIDs = slices.DeleteFunc(m.TeamIDs, func(id string) bool { return id == t.ID })
+		writeJSON(w, 200, f.teamJSON(t))
 	default:
 		w.WriteHeader(405)
 	}

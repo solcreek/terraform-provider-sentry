@@ -89,6 +89,7 @@ See [`examples/`](./examples) for every resource and data source.
 | resource | `sentry_project_ownership` | A project's issue ownership rules and auto-assignment. |
 | resource | `sentry_project_inbound_filter` | Turn a built-in inbound data filter on or off. |
 | resource | `sentry_organization_member` | Invite a member with an organization role. |
+| resource | `sentry_team_member` | Put an organization member on a team. |
 | data | `sentry_organization` | The organization the provider is configured for. |
 | data | `sentry_organization_member` | Look up a member by email address. |
 | data | `sentry_team` | Look up a team by slug or ID. |

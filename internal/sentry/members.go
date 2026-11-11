@@ -4,6 +4,7 @@ package sentry
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -90,4 +91,31 @@ func (c *Client) UpdateMemberRole(ctx context.Context, org, memberID, role strin
 // RemoveMember removes a member, or withdraws a pending invitation.
 func (c *Client) RemoveMember(ctx context.Context, org, memberID string) error {
 	return c.do(ctx, http.MethodDelete, membersPath(org)+seg(memberID)+"/", nil, nil, nil)
+}
+
+func memberTeamPath(org, memberID, team string) string {
+	return membersPath(org) + seg(memberID) + "/teams/" + seg(team) + "/"
+}
+
+// ErrTeamAccessRequested is returned by AddTeamMember when Sentry did not add
+// the member but filed a request to join the team instead (HTTP 202), which
+// happens when the token may not add members to that team directly.
+var ErrTeamAccessRequested = errors.New("sentry filed an access request instead of adding the member to the team")
+
+// AddTeamMember puts an organization member on a team (ID or slug). It is
+// not an error if the member is already on it.
+func (c *Client) AddTeamMember(ctx context.Context, org, memberID, team string) error {
+	raw, err := c.send(ctx, http.MethodPost, memberTeamPath(org, memberID, team), nil, nil)
+	if err != nil {
+		return err
+	}
+	if raw.status == http.StatusAccepted {
+		return ErrTeamAccessRequested
+	}
+	return decode(http.MethodPost, "", raw, nil)
+}
+
+// RemoveTeamMember takes an organization member off a team (ID or slug).
+func (c *Client) RemoveTeamMember(ctx context.Context, org, memberID, team string) error {
+	return c.do(ctx, http.MethodDelete, memberTeamPath(org, memberID, team), nil, nil, nil)
 }
