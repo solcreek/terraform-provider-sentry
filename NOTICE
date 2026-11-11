@@ -1,0 +1,15 @@
+Terraform / OpenTofu Provider for Sentry
+Source: https://github.com/solcreek/terraform-provider-sentry
+Original source is licensed under Mozilla Public License 2.0.
+
+This is an independent community project. It is not affiliated with, endorsed
+by, or supported by Functional Software, Inc. (Sentry). "Sentry" is a
+trademark of its respective owner and is used here only to describe what the
+provider works with.
+
+The provider uses the Terraform Plugin Framework (MPL-2.0) and a
+standard-library-only Sentry API client written against Sentry's published API
+reference. Dependencies retain their own licenses and copyright notices.
+Release archives include dependency licenses, notices, and source where
+required under third_party/. Dependency versions are recorded in go.mod and
+go.sum at the corresponding release tag.
