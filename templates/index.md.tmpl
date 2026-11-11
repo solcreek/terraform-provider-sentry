@@ -41,6 +41,8 @@ A `401` is reported as an invalid, expired or revoked token; a `403` as a missin
 
 - Teams and projects are tracked by their numeric ID, not their slug. Renaming one, in
   Terraform or in Sentry, never replaces it. Reference them by `id`.
+  A `project_id` argument also takes a slug, kept as written, but a slug stops resolving
+  when the project is renamed.
 - `sentry_project` defaults to `deletion_protection = true`, because deleting a project
   deletes its events and Sentry has no undo. Apply `false` before destroying.
 - Sentry deletes teams and projects asynchronously: a destroy returns once Sentry has

@@ -30,7 +30,7 @@ resource "sentry_project_team" "api_sre" {
 
 ### Required
 
-- `project_id` (String) ID of the project, e.g. `sentry_project.example.id`.
+- `project_id` (String) ID of the project, e.g. `sentry_project.example.id`. A project slug works too and is kept as written, but it stops resolving when the project is renamed, so prefer the ID.
 - `team_id` (String) ID of the team, e.g. `sentry_team.example.id`.
 
 ### Read-Only

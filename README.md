@@ -132,7 +132,9 @@ What happens with bad credentials:
   so a rename, in Terraform or in the Sentry UI, is an in-place update and never
   a replacement. When `slug` is unset, Sentry derives it from the name once, at
   creation, adding a short suffix if that slug is taken; an explicit `slug`
-  that is taken is an error.
+  that is taken is an error. A `project_id` argument also takes a slug, for a
+  project managed elsewhere, but a slug stops resolving when the project is
+  renamed, so prefer the ID (`data.sentry_project` looks it up).
 - **Deleting a project is guarded.** `sentry_project` defaults to
   `deletion_protection = true`: a delete removes the project's events and Sentry
   has no undo. Apply `deletion_protection = false` first.

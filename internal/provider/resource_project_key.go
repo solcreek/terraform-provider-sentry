@@ -55,7 +55,11 @@ type projectKeyModel struct {
 
 func (m *projectKeyModel) fill(ctx context.Context, k *sentry.ProjectKey) diag.Diagnostics {
 	m.ID = types.StringValue(k.ID)
-	m.ProjectID = types.StringValue(k.ProjectIDString())
+	// Keep `project_id` as configured, which may be a slug; only an import
+	// starts without one and settles on the ID.
+	if m.ProjectID.IsNull() || m.ProjectID.IsUnknown() {
+		m.ProjectID = types.StringValue(k.ProjectIDString())
+	}
 	m.Name = types.StringValue(k.Name)
 	m.IsActive = types.BoolValue(k.IsActive)
 	m.RateLimit = nil
@@ -132,7 +136,7 @@ func (r *projectKeyResource) Schema(_ context.Context, _ resource.SchemaRequest,
 				PlanModifiers:       keep,
 			},
 			"project_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the project the key belongs to, e.g. `sentry_project.example.id`.",
+				MarkdownDescription: projectIDDescription,
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},

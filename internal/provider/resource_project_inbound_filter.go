@@ -80,7 +80,7 @@ func (r *projectInboundFilterResource) Schema(_ context.Context, _ resource.Sche
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"project_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the project, e.g. `sentry_project.example.id`.",
+				MarkdownDescription: projectIDDescription,
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `sentry_project_key` and `sentry_project_team` now work with a project slug as
+  `project_id`. The key failed with "inconsistent result after apply" and the team
+  access planned a replacement on every run. The slug is kept as written.
+
+### Changed
+
+- Every `project_id` argument documents that it takes an ID or a slug, and that a slug
+  stops resolving when the project is renamed.
+
 ## [0.1.0] - 2026-11-11
 
 ### Added

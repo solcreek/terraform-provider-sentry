@@ -51,7 +51,7 @@ func (r *projectTeamResource) Schema(_ context.Context, _ resource.SchemaRequest
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.UseStateForUnknown()},
 			},
 			"project_id": schema.StringAttribute{
-				MarkdownDescription: "ID of the project, e.g. `sentry_project.example.id`.",
+				MarkdownDescription: projectIDDescription,
 				Required:            true,
 				PlanModifiers:       []planmodifier.String{stringplanmodifier.RequiresReplace()},
 				Validators:          []validator.String{stringvalidator.LengthAtLeast(1)},
@@ -82,7 +82,7 @@ func (r *projectTeamResource) Create(ctx context.Context, req resource.CreateReq
 		resp.Diagnostics.AddError("Unable to read project", err.Error())
 		return
 	}
-	if project.HasTeam(teamID) {
+	if findTeam(project, teamID) != nil {
 		resp.Diagnostics.AddError("Team already has access to the project",
 			fmt.Sprintf("Team %s already has access to project %s. If it is the project's `team_id`, drop this "+
 				"resource; otherwise import it: terraform import <address> %s/%s", teamID, projectID, projectID, teamID))
@@ -111,15 +111,11 @@ func (r *projectTeamResource) Read(ctx context.Context, req resource.ReadRequest
 		resp.Diagnostics.AddError("Unable to read project", err.Error())
 		return
 	}
-	// An import may name the project and team by slug; settle on IDs.
-	team := findTeam(project, state.TeamID.ValueString())
-	if team == nil {
+	// The project and team stay as configured, which may be by slug.
+	if findTeam(project, state.TeamID.ValueString()) == nil {
 		resp.State.RemoveResource(ctx)
 		return
 	}
-	state.ProjectID = types.StringValue(project.ID)
-	state.TeamID = types.StringValue(team.ID)
-	state.ID = types.StringValue(project.ID + "/" + team.ID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -150,9 +146,21 @@ func (r *projectTeamResource) ImportState(ctx context.Context, req resource.Impo
 			fmt.Sprintf("Expected `<project_id_or_slug>/<team_id_or_slug>`, got %q.", req.ID))
 		return
 	}
+	// An import may name the project and team by slug; settle on IDs.
+	p, err := r.data.client.GetProject(ctx, r.data.org, project)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to import the team's access to the project", err.Error())
+		return
+	}
+	t := findTeam(p, team)
+	if t == nil {
+		resp.Diagnostics.AddError("Unable to import the team's access to the project",
+			fmt.Sprintf("Team %s has no access to project %s.", team, project))
+		return
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &projectTeamModel{
-		ID:        types.StringValue(req.ID),
-		ProjectID: types.StringValue(project),
-		TeamID:    types.StringValue(team),
+		ID:        types.StringValue(p.ID + "/" + t.ID),
+		ProjectID: types.StringValue(p.ID),
+		TeamID:    types.StringValue(t.ID),
 	})...)
 }

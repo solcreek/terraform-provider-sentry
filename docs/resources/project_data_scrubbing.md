@@ -33,7 +33,7 @@ resource "sentry_project_data_scrubbing" "api" {
 
 ### Required
 
-- `project_id` (String) ID of the project, e.g. `sentry_project.example.id`.
+- `project_id` (String) ID of the project, e.g. `sentry_project.example.id`. A project slug works too and is kept as written, but it stops resolving when the project is renamed, so prefer the ID.
 
 ### Optional
 
