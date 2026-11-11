@@ -27,9 +27,10 @@ pagination, and turns credential errors into actionable messages.
 > integrates with.
 
 > [!WARNING]
-> **Pre-release.** The provider is tested against an in-memory model of the
-> Sentry API built from Sentry's published reference. It has not been verified
-> against the live service yet.
+> **Pre-release.** The data sources were verified read-only against sentry.io
+> on 2026-11-11. The resources (everything that writes) are so far tested only
+> against an in-memory model of the Sentry API built from Sentry's published
+> reference, not against the live service.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
 
