@@ -648,3 +648,61 @@ resource "sentry_project_key" "acc" {
 		},
 	})
 }
+
+// TestAccProjectDataScrubbing takes over the data scrubbing settings of a
+// throwaway project. It never touches the organization-wide settings.
+func TestAccProjectDataScrubbing(t *testing.T) {
+	testAccPreCheck(t)
+	name := "tf-acc-" + randomSuffix()
+	config := func(body string) string {
+		return requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %[1]q
+}
+
+resource "sentry_team" "acc" {
+  name = %[2]q
+}
+
+resource "sentry_project" "acc" {
+  name                = %[2]q
+  team_id             = sentry_team.acc.id
+  default_rules       = false
+  deletion_protection = false
+}
+
+resource "sentry_project_data_scrubbing" "acc" {
+  project_id = sentry_project.acc.id
+%[3]s
+}
+`, os.Getenv("SENTRY_TEST_ORG"), name, body)
+	}
+	lists := "  safe_fields      = [\"request_id\", \"Build_Number\"]\n  sensitive_fields = [\"session_token\"]"
+	switches := "  data_scrubber          = false\n  data_scrubber_defaults = false\n  scrub_ip_addresses     = true\n  safe_fields            = [\"request_id\"]\n  sensitive_fields       = []"
+	empty := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: config(lists),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project_data_scrubbing.acc", "safe_fields.#", "2"),
+					resource.TestCheckResourceAttr("sentry_project_data_scrubbing.acc", "sensitive_fields.#", "1"),
+					resource.TestCheckResourceAttrSet("sentry_project_data_scrubbing.acc", "data_scrubber"),
+				),
+			},
+			{Config: config(lists), ConfigPlanChecks: empty},
+			{ResourceName: "sentry_project_data_scrubbing.acc", ImportState: true, ImportStateId: name, ImportStateVerify: true},
+			{
+				Config: config(switches),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project_data_scrubbing.acc", "data_scrubber", "false"),
+					resource.TestCheckResourceAttr("sentry_project_data_scrubbing.acc", "scrub_ip_addresses", "true"),
+					resource.TestCheckResourceAttr("sentry_project_data_scrubbing.acc", "sensitive_fields.#", "0"),
+				),
+			},
+			{Config: config(switches), ConfigPlanChecks: empty},
+		},
+	})
+}
