@@ -49,6 +49,8 @@ variable (or the `auth_token` argument). A personal token works too. The token n
 | `sentry_team` | `team:admin` (create, rename, delete), plus `org:read` |
 | `sentry_project`, `sentry_project_team`, `sentry_project_key` | `project:admin` |
 | `sentry_project_ownership`, `sentry_project_inbound_filter` | `project:write` |
+| `sentry_project_data_scrubbing` | `project:write` |
+| `sentry_organization_data_scrubbing` | `org:write` |
 | `sentry_organization_member` | `member:admin` (changing a role needs a personal token) |
 | `sentry_team_member` | `team:write`, `org:write`, `member:read` |
 | data sources only | `org:read`, `team:read`, `project:read`, `member:read` |
@@ -69,6 +71,8 @@ A `401` is reported as an invalid, expired or revoked token; a `403` as a missin
   `sentry_project_ownership` and `sentry_project_inbound_filter` take them over when created
   and reset them (no rules, filter off) when destroyed.
 - `sentry_organization_member` sends an invitation by email when created.
+- The data scrubbing resources change only the settings the configuration names, and
+  destroying them leaves the settings in place.
 - `sentry_project.default_rules` only applies when the project is created.
 - Client key secrets (`secret_key`, `dsn_secret`) are marked sensitive but are stored in
   the state, like every attribute. Protect the state accordingly.

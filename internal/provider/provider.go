@@ -142,6 +142,8 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 		newProjectInboundFilterResource,
 		newOrganizationMemberResource,
 		newTeamMemberResource,
+		newProjectDataScrubbingResource,
+		newOrganizationDataScrubbingResource,
 	}
 }
 

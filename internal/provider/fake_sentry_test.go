@@ -39,6 +39,9 @@ const (
 //     legacy-browsers filter is addressed as "legacy-browsers" and reports
 //     its browsers as a list, the other filters a boolean;
 //   - a member update replaces the member's teams with the teamRoles sent;
+//   - a project's data scrubbing settings accept partial updates and store
+//     field names as written (the organization-wide ones follow the API
+//     reference only: they were read, never written, on sentry.io);
 //   - list endpoints send a Link header that always names a next cursor and
 //     marks it results="false" on the last page;
 //   - errors carry {"detail": "..."} or {"<field>": ["..."]}.
@@ -51,7 +54,9 @@ type fakeSentry struct {
 	teams    []*fakeTeam
 	projects []*fakeProject
 	members  []*fakeMember
-	pageSize int
+	// orgScrubbing starts with everything off, as an organization does.
+	orgScrubbing fakeScrubbing
+	pageSize     int
 	// closedTeams makes adding a member answer 202 (an access request), as
 	// Sentry does when the token may not add members to a team directly.
 	closedTeams bool
@@ -72,10 +77,55 @@ type fakeProject struct {
 	TeamIDs        []string
 	Keys           []*fakeKey
 	Ownership      fakeOwnership
+	Scrubbing      fakeScrubbing
 	// Filters holds the switch filters that are on; LegacyBrowsers the
 	// browsers the legacy-browsers filter drops.
 	Filters        map[string]bool
 	LegacyBrowsers []string
+}
+
+// fakeScrubbing is the data scrubbing settings of an organization or project.
+type fakeScrubbing struct {
+	DataScrubber, DataScrubberDefaults, ScrubIPAddresses bool
+	SensitiveFields, SafeFields                          []string
+}
+
+// newProjectScrubbing is a new project's settings on sentry.io (observed
+// 2026-11-11): both scrubbers on, IP addresses kept, no extra fields.
+func newProjectScrubbing() fakeScrubbing {
+	return fakeScrubbing{DataScrubber: true, DataScrubberDefaults: true}
+}
+
+func (s *fakeScrubbing) json(into map[string]any) {
+	into["dataScrubber"], into["dataScrubberDefaults"], into["scrubIPAddresses"] = s.DataScrubber, s.DataScrubberDefaults, s.ScrubIPAddresses
+	into["sensitiveFields"] = append([]string{}, s.SensitiveFields...)
+	into["safeFields"] = append([]string{}, s.SafeFields...)
+}
+
+// update applies the submitted settings; missing ones are left alone.
+func (s *fakeScrubbing) update(body map[string]any) {
+	flag := func(key string, dst *bool) {
+		if v, ok := body[key].(bool); ok {
+			*dst = v
+		}
+	}
+	fields := func(key string, dst *[]string) {
+		raw, ok := body[key].([]any)
+		if !ok {
+			return
+		}
+		*dst = nil
+		for _, v := range raw {
+			if f, ok := v.(string); ok {
+				*dst = append(*dst, f)
+			}
+		}
+	}
+	flag("dataScrubber", &s.DataScrubber)
+	flag("dataScrubberDefaults", &s.DataScrubberDefaults)
+	flag("scrubIPAddresses", &s.ScrubIPAddresses)
+	fields("sensitiveFields", &s.SensitiveFields)
+	fields("safeFields", &s.SafeFields)
 }
 
 // fakeOwnership starts out the way a new project's does on sentry.io.
@@ -164,7 +214,7 @@ func (f *fakeSentry) addTeam(name string) *fakeTeam {
 func (f *fakeSentry) addProject(name string, teams ...*fakeTeam) *fakeProject {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	p := &fakeProject{ID: f.id(), Slug: slugify(name), Name: name, DefaultRules: true, Ownership: newFakeOwnership()}
+	p := &fakeProject{ID: f.id(), Slug: slugify(name), Name: name, DefaultRules: true, Ownership: newFakeOwnership(), Scrubbing: newProjectScrubbing()}
 	for _, t := range teams {
 		p.TeamIDs = append(p.TeamIDs, t.ID)
 	}
@@ -240,6 +290,8 @@ func (f *fakeSentry) snapshotProject(idOrSlug string) *fakeProject {
 	cp := *p
 	cp.TeamIDs = append([]string(nil), p.TeamIDs...)
 	cp.LegacyBrowsers = append([]string(nil), p.LegacyBrowsers...)
+	cp.Scrubbing.SensitiveFields = append([]string(nil), p.Scrubbing.SensitiveFields...)
+	cp.Scrubbing.SafeFields = append([]string(nil), p.Scrubbing.SafeFields...)
 	cp.Filters = map[string]bool{}
 	for k, v := range p.Filters {
 		cp.Filters[k] = v
@@ -297,7 +349,9 @@ func (f *fakeSentry) projectJSON(p *fakeProject) map[string]any {
 	if !f.noRateLimits {
 		features = append(features, "rate-limits")
 	}
-	return map[string]any{"id": p.ID, "slug": p.Slug, "name": p.Name, "platform": p.Platform, "teams": teams, "features": features}
+	out := map[string]any{"id": p.ID, "slug": p.Slug, "name": p.Name, "platform": p.Platform, "teams": teams, "features": features}
+	p.Scrubbing.json(out)
+	return out
 }
 
 func (f *fakeSentry) keyJSON(p *fakeProject, k *fakeKey) map[string]any {
@@ -368,8 +422,13 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	arg := func(i int) string { return parts[i] }
 
 	switch {
-	case route == "GET organizations/":
-		writeJSON(w, 200, map[string]any{"id": fakeOrgID, "slug": fakeOrgSlug, "name": "Acme Inc"})
+	case route == "GET organizations/" || route == "PUT organizations/":
+		if r.Method == http.MethodPut {
+			f.orgScrubbing.update(body)
+		}
+		out := map[string]any{"id": fakeOrgID, "slug": fakeOrgSlug, "name": "Acme Inc"}
+		f.orgScrubbing.json(out)
+		writeJSON(w, 200, out)
 
 	case parts[0] == "organizations" && len(parts) == 6 && parts[2] == "members" && parts[4] == "teams":
 		f.serveMemberTeam(w, r.Method, arg(3), arg(5))
@@ -511,7 +570,7 @@ func (f *fakeSentry) createProject(w http.ResponseWriter, teamRef string, body m
 		detail(w, 409, "A project with this slug already exists.")
 		return
 	}
-	p := &fakeProject{ID: f.id(), Slug: slug, Name: name, TeamIDs: []string{t.ID}, DefaultRules: true, Ownership: newFakeOwnership()}
+	p := &fakeProject{ID: f.id(), Slug: slug, Name: name, TeamIDs: []string{t.ID}, DefaultRules: true, Ownership: newFakeOwnership(), Scrubbing: newProjectScrubbing()}
 	if platform := str(body, "platform"); platform != "" {
 		p.Platform = &platform
 	}
@@ -546,6 +605,7 @@ func (f *fakeSentry) serveProject(w http.ResponseWriter, method, ref string, bod
 		if platform := str(body, "platform"); platform != "" {
 			p.Platform = &platform
 		}
+		p.Scrubbing.update(body)
 		writeJSON(w, 200, f.projectJSON(p))
 	case http.MethodDelete:
 		kept := f.projects[:0]

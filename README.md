@@ -28,8 +28,10 @@ pagination, and turns credential errors into actionable messages.
 
 > [!WARNING]
 > **Pre-release.** Every resource and data source passed its acceptance test
-> against sentry.io on 2026-11-11, with one gap: a client key `rate_limit` that
-> takes effect, which needs a Sentry plan the test organization does not have.
+> against sentry.io on 2026-11-11, with two gaps: a client key `rate_limit` that
+> takes effect, which needs a Sentry plan the test organization does not have,
+> and `sentry_organization_data_scrubbing`, whose test would change a real
+> organization's settings and has only run against an in-memory model.
 > Nothing has been released yet, and self-hosted Sentry is untested.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
@@ -91,6 +93,8 @@ See [`examples/`](./examples) for every resource and data source.
 | resource | `sentry_project_inbound_filter` | Turn a built-in inbound data filter on or off. |
 | resource | `sentry_organization_member` | Invite a member with an organization role. |
 | resource | `sentry_team_member` | Put an organization member on a team. |
+| resource | `sentry_project_data_scrubbing` | A project's data scrubbers and sensitive / safe field lists. |
+| resource | `sentry_organization_data_scrubbing` | The same settings organization-wide. |
 | data | `sentry_organization` | The organization the provider is configured for. |
 | data | `sentry_organization_member` | Look up a member by email address. |
 | data | `sentry_team` | Look up a team by slug or ID. |
@@ -147,6 +151,10 @@ What happens with bad credentials:
   configuration and every inbound filter. `sentry_project_ownership` and
   `sentry_project_inbound_filter` take them over when created; destroying them
   clears the rules or turns the filter off rather than deleting anything.
+- **Data scrubbing is never reset.** `sentry_project_data_scrubbing` and
+  `sentry_organization_data_scrubbing` only change the settings the
+  configuration names, and destroying them leaves everything as it is, because
+  a reset could switch scrubbing off. Field names are stored as written.
 - **Members are invited by email.** Creating `sentry_organization_member`
   sends an invitation; `pending` tells whether it was accepted, and a pending
   member can already be put on teams. An address that is already a member is

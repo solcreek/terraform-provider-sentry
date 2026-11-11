@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   keeps the member's teams. Import by email or member ID.
 - `sentry_team_member` resource: puts an organization member on a team.
   Import by `<team>/<member_id>`.
+- `sentry_project_data_scrubbing` and `sentry_organization_data_scrubbing`
+  resources: the data scrubbers, IP address scrubbing and the sensitive and
+  safe field lists, per project and organization-wide. Unset settings keep
+  Sentry's value, and destroying the resource leaves the settings in place.
 - `sentry_organization`, `sentry_organization_member`, `sentry_team`,
   `sentry_project` and `sentry_project_key` data sources.
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and
