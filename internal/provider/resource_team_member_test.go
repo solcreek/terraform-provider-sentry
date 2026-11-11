@@ -112,3 +112,48 @@ func TestTeamMemberErrors(t *testing.T) {
 		},
 	})
 }
+
+// Changing a member's organization role must not take them off their teams:
+// Sentry's member update replaces the teams with the ones it is sent.
+func TestOrganizationRoleChangeKeepsTeams(t *testing.T) {
+	f := newFakeSentry(t)
+	backend := f.addTeam("Backend")
+	config := func(role string) string {
+		return f.providerConfig() + fmt.Sprintf(`
+resource "sentry_organization_member" "jane" {
+  email = "jane@example.com"
+  role  = %q
+}
+
+resource "sentry_team_member" "jane" {
+  team_id   = %q
+  member_id = sentry_organization_member.jane.id
+}
+`, role, backend.ID)
+	}
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: config("member")},
+			{
+				Config: config("admin"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("sentry_organization_member.jane", plancheck.ResourceActionUpdate),
+					plancheck.ExpectResourceAction("sentry_team_member.jane", plancheck.ResourceActionNoop),
+				}},
+				Check: func(s *terraform.State) error {
+					id := s.RootModule().Resources["sentry_organization_member.jane"].Primary.ID
+					m := f.snapshotMember(id)
+					if m.Role != "admin" || !slices.Equal(m.TeamIDs, []string{backend.ID}) {
+						return fmt.Errorf("member = %+v, want role admin on team %s", m, backend.ID)
+					}
+					return nil
+				},
+			},
+			{
+				Config:           config("admin"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}},
+			},
+		},
+	})
+}

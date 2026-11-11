@@ -773,8 +773,9 @@ func (f *fakeSentry) memberJSON(m *fakeMember, withTeams bool) map[string]any {
 
 // serveMembers models the member endpoints. Reads mirror sentry.io (verified
 // read-only, 2026-11-11): the list has no teams, the detail does, emails are
-// lowercase. The write answers (duplicate invitation, role change) follow the
-// API reference only.
+// lowercase. Invitations, role changes and removals were verified with
+// TestAccOrganizationMember the same day; the answer to a duplicate
+// invitation follows the API reference only (the provider never sends one).
 func (f *fakeSentry) serveMembers(w http.ResponseWriter, r *http.Request, memberID string, body map[string]any) {
 	if memberID == "" {
 		switch r.Method {
@@ -819,6 +820,18 @@ func (f *fakeSentry) serveMembers(w http.ResponseWriter, r *http.Request, member
 	case http.MethodPut:
 		if role := str(body, "orgRole"); role != "" {
 			m.Role = role
+		}
+		// The update replaces the member's teams with the teamRoles sent;
+		// without teamRoles the member leaves every team (observed on
+		// sentry.io, 2026-11-11).
+		m.TeamIDs = nil
+		if roles, ok := body["teamRoles"].([]any); ok {
+			for _, raw := range roles {
+				tr, _ := raw.(map[string]any)
+				if t := f.team(str(tr, "teamSlug")); t != nil && str(tr, "role") != "" {
+					m.TeamIDs = append(m.TeamIDs, t.ID)
+				}
+			}
 		}
 		writeJSON(w, 200, f.memberJSON(m, true))
 	case http.MethodDelete:

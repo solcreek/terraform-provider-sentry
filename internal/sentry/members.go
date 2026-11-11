@@ -19,7 +19,19 @@ type Member struct {
 	// Teams is the slugs of the member's teams. Only the detail endpoint
 	// (GetMember) reports it.
 	Teams []string `json:"teams"`
+	// TeamRoles is the member's role on each of those teams; Role is null
+	// when the member has no more than their default team role.
+	TeamRoles []TeamRole `json:"teamRoles"`
 }
+
+// TeamRole is a member's role on one team.
+type TeamRole struct {
+	TeamSlug string  `json:"teamSlug"`
+	Role     *string `json:"role"`
+}
+
+// defaultTeamRole is the team role a member has when none is set.
+const defaultTeamRole = "contributor"
 
 // InTeam reports whether the member is on the team with this slug.
 func (m *Member) InTeam(slug string) bool {
@@ -80,9 +92,38 @@ func (c *Client) InviteMember(ctx context.Context, org, email, role string) (*Me
 
 // UpdateMemberRole changes a member's organization role. Sentry only allows
 // this with a personal (user) token, not an internal integration's.
+//
+// The update endpoint replaces the member's teams with the teamRoles it is
+// sent, and an update without teamRoles takes the member off every team
+// (observed on sentry.io, 2026-11-11). The member's current teams are
+// therefore read and sent back unchanged.
 func (c *Client) UpdateMemberRole(ctx context.Context, org, memberID, role string) (*Member, error) {
+	current, err := c.GetMember(ctx, org, memberID)
+	if err != nil {
+		return nil, err
+	}
+	type teamRole struct {
+		TeamSlug string `json:"teamSlug"`
+		Role     string `json:"role"`
+	}
+	roles := make([]teamRole, 0, len(current.Teams))
+	seen := map[string]bool{}
+	for _, tr := range current.TeamRoles {
+		r := defaultTeamRole
+		if tr.Role != nil && *tr.Role != "" {
+			r = *tr.Role
+		}
+		roles = append(roles, teamRole{TeamSlug: tr.TeamSlug, Role: r})
+		seen[tr.TeamSlug] = true
+	}
+	for _, slug := range current.Teams {
+		if !seen[slug] {
+			roles = append(roles, teamRole{TeamSlug: slug, Role: defaultTeamRole})
+		}
+	}
 	var out Member
-	if err := c.do(ctx, http.MethodPut, membersPath(org)+seg(memberID)+"/", nil, map[string]any{"orgRole": role}, &out); err != nil {
+	body := map[string]any{"orgRole": role, "teamRoles": roles}
+	if err := c.do(ctx, http.MethodPut, membersPath(org)+seg(memberID)+"/", nil, body, &out); err != nil {
 		return nil, err
 	}
 	return &out, nil
