@@ -248,3 +248,31 @@ func TestConcurrencyIsCapped(t *testing.T) {
 		t.Fatalf("%d requests in flight, cap is %d", peak.Load(), maxConcurrent)
 	}
 }
+
+func TestInboundFilterDecoding(t *testing.T) {
+	c := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`[{"id":"browser-extensions","active":true},{"id":"localhost","active":false},` +
+			`{"id":"legacy-browsers","active":["ie","edge"]}]`))
+	})
+	filters, err := c.ListInboundFilters(context.Background(), "acme", "api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !filters[0].Active || filters[0].Subfilters != nil || filters[1].Active {
+		t.Errorf("switch filters = %+v", filters[:2])
+	}
+	if !filters[2].Active || strings.Join(filters[2].Subfilters, ",") != "ie,edge" {
+		t.Errorf("legacy-browsers = %+v", filters[2])
+	}
+	// With no browser filtered, Sentry may answer false instead of a list.
+	var off InboundFilter
+	if err := json.Unmarshal([]byte(`{"id":"legacy-browsers","active":false}`), &off); err != nil {
+		t.Fatal(err)
+	}
+	if off.Active || off.Subfilters == nil || len(off.Subfilters) != 0 {
+		t.Errorf("legacy-browsers off = %+v", off)
+	}
+	if err := json.Unmarshal([]byte(`{"id":"x","active":"yes"}`), &off); err == nil {
+		t.Error("a string for active should be an error")
+	}
+}

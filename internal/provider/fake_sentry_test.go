@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +63,10 @@ type fakeProject struct {
 	TeamIDs        []string
 	Keys           []*fakeKey
 	Ownership      fakeOwnership
+	// Filters holds the switch filters that are on; LegacyBrowsers the
+	// browsers the legacy-browsers filter drops.
+	Filters        map[string]bool
+	LegacyBrowsers []string
 }
 
 // fakeOwnership starts out the way a new project's does on sentry.io.
@@ -185,6 +190,11 @@ func (f *fakeSentry) snapshotProject(idOrSlug string) *fakeProject {
 	}
 	cp := *p
 	cp.TeamIDs = append([]string(nil), p.TeamIDs...)
+	cp.LegacyBrowsers = append([]string(nil), p.LegacyBrowsers...)
+	cp.Filters = map[string]bool{}
+	for k, v := range p.Filters {
+		cp.Filters[k] = v
+	}
 	cp.Keys = nil
 	for _, k := range p.Keys {
 		kc := *k
@@ -319,6 +329,13 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 
 	case parts[0] == "projects" && len(parts) == 3:
 		f.serveProject(w, r.Method, arg(2), body)
+
+	case parts[0] == "projects" && len(parts) >= 4 && len(parts) <= 5 && parts[3] == "filters":
+		filterID := ""
+		if len(parts) == 5 {
+			filterID = arg(4)
+		}
+		f.serveFilters(w, r.Method, arg(2), filterID, body)
 
 	case parts[0] == "projects" && len(parts) == 4 && parts[3] == "ownership":
 		f.serveOwnership(w, r.Method, arg(2), body)
@@ -624,4 +641,58 @@ func (f *fakeSentry) serveOwnership(w http.ResponseWriter, method, projectRef st
 		"codeownersAutoSync": o.CodeownersAutoSync, "isActive": true, "schema": nil,
 		"dateCreated": nil, "lastUpdated": nil,
 	})
+}
+
+// The switch filters every project has, and the browsers legacy-browsers knows.
+var (
+	fakeSwitchFilters  = []string{"browser-extensions", "filtered-transaction", "localhost", "web-crawlers"}
+	fakeLegacyBrowsers = []string{"ie", "edge", "safari", "firefox", "chrome", "opera", "android", "opera_mini"}
+)
+
+func (f *fakeSentry) serveFilters(w http.ResponseWriter, method, projectRef, filterID string, body map[string]any) {
+	p := f.project(projectRef)
+	if p == nil {
+		detail(w, http.StatusNotFound, "Project does not exist")
+		return
+	}
+	if filterID == "" {
+		if method != http.MethodGet {
+			w.WriteHeader(405)
+			return
+		}
+		// Sorted by ID, legacy-browsers among the others, as Sentry lists them.
+		out := []any{
+			map[string]any{"id": "browser-extensions", "active": p.Filters["browser-extensions"]},
+			map[string]any{"id": "filtered-transaction", "active": p.Filters["filtered-transaction"]},
+			map[string]any{"id": "legacy-browsers", "active": append([]string{}, p.LegacyBrowsers...)},
+			map[string]any{"id": "localhost", "active": p.Filters["localhost"]},
+			map[string]any{"id": "web-crawlers", "active": p.Filters["web-crawlers"]},
+		}
+		writeJSON(w, 200, out)
+		return
+	}
+	if method != http.MethodPut {
+		w.WriteHeader(405)
+		return
+	}
+	if filterID == "legacy-browsers" {
+		p.LegacyBrowsers = nil
+		raw, _ := body["subfilters"].([]any)
+		for _, v := range raw {
+			if s, ok := v.(string); ok && slices.Contains(fakeLegacyBrowsers, s) {
+				p.LegacyBrowsers = append(p.LegacyBrowsers, s)
+			}
+		}
+		w.WriteHeader(204)
+		return
+	}
+	if !slices.Contains(fakeSwitchFilters, filterID) {
+		notFound(w)
+		return
+	}
+	if p.Filters == nil {
+		p.Filters = map[string]bool{}
+	}
+	p.Filters[filterID], _ = body["active"].(bool)
+	w.WriteHeader(204)
 }
