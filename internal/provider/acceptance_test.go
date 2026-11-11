@@ -273,3 +273,272 @@ func slugIfProject(p *sentry.Project) string {
 	}
 	return p.Slug
 }
+
+// TestAccProjectSettings takes over the ownership rules and inbound filters
+// of a throwaway project.
+func TestAccProjectSettings(t *testing.T) {
+	testAccPreCheck(t)
+	name := "tf-acc-" + randomSuffix()
+
+	config := func(rules, fallThrough, crawlers, browsers string) string {
+		return requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %[1]q
+}
+
+resource "sentry_team" "acc" {
+  name = %[2]q
+}
+
+resource "sentry_project" "acc" {
+  name                = %[2]q
+  team_id             = sentry_team.acc.id
+  default_rules       = false
+  deletion_protection = false
+}
+
+resource "sentry_project_ownership" "acc" {
+  project_id  = sentry_project.acc.id
+  raw         = %[3]s
+  fallthrough = %[4]s
+}
+
+resource "sentry_project_inbound_filter" "crawlers" {
+  project_id = sentry_project.acc.id
+  filter_id  = "web-crawlers"
+  active     = %[5]s
+}
+
+resource "sentry_project_inbound_filter" "legacy" {
+  project_id = sentry_project.acc.id
+  filter_id  = "legacy-browsers"
+  subfilters = [%[6]s]
+}
+`, os.Getenv("SENTRY_TEST_ORG"), name, rules, fallThrough, crawlers, browsers)
+	}
+	// Two rules on two lines, written the way a heredoc would produce them.
+	twoRules := fmt.Sprintf("\"path:src/checkout/* #%[1]s\\nurl:https://example.com/pay #%[1]s\\n\"", name)
+	oneRule := fmt.Sprintf("\"path:src/* #%s\"", name)
+	first := config(twoRules, "false", "true", `"ie", "opera_mini"`)
+	second := config(oneRule, "true", "false", `"safari"`)
+	empty := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: first,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project_ownership.acc", "fallthrough", "false"),
+					resource.TestCheckResourceAttrSet("sentry_project_ownership.acc", "auto_assignment"),
+					resource.TestCheckResourceAttr("sentry_project_inbound_filter.crawlers", "active", "true"),
+					resource.TestCheckResourceAttr("sentry_project_inbound_filter.legacy", "subfilters.#", "2"),
+				),
+			},
+			{Config: first, ConfigPlanChecks: empty},
+			{
+				ResourceName: "sentry_project_ownership.acc", ImportState: true, ImportStateId: name, ImportStateVerify: true,
+				// The imported text is Sentry's, without the trailing newline.
+				ImportStateVerifyIgnore: []string{"raw"},
+			},
+			{ResourceName: "sentry_project_inbound_filter.crawlers", ImportState: true, ImportStateId: name + "/web-crawlers", ImportStateVerify: true},
+			{ResourceName: "sentry_project_inbound_filter.legacy", ImportState: true, ImportStateId: name + "/legacy-browsers", ImportStateVerify: true},
+			{
+				Config: second,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("sentry_project_ownership.acc", "fallthrough", "true"),
+					resource.TestCheckResourceAttr("sentry_project_inbound_filter.crawlers", "active", "false"),
+					resource.TestCheckResourceAttr("sentry_project_inbound_filter.legacy", "subfilters.#", "1"),
+				),
+			},
+			{Config: second, ConfigPlanChecks: empty},
+			{
+				// An empty browser set turns legacy-browsers off and settles.
+				Config: config(oneRule, "true", "false", ``),
+				Check:  resource.TestCheckResourceAttr("sentry_project_inbound_filter.legacy", "subfilters.#", "0"),
+			},
+			{Config: config(oneRule, "true", "false", ``), ConfigPlanChecks: empty},
+		},
+	})
+}
+
+// TestAccTeamMember puts an existing organization member, named by
+// SENTRY_TEST_MEMBER_ID, on a throwaway team and takes them off again. It
+// never invites or removes an organization member.
+//
+// A team created with a personal token starts with the token's user on it
+// (observed on sentry.io, 2026-11-11), so when the test member is that user
+// they are taken off the new team first.
+func TestAccTeamMember(t *testing.T) {
+	testAccPreCheck(t)
+	memberID := os.Getenv("SENTRY_TEST_MEMBER_ID")
+	if memberID == "" {
+		t.Skip("SENTRY_TEST_MEMBER_ID (an existing organization member's ID) is not set")
+	}
+	client, org := testAccClient()
+	ctx := context.Background()
+	name := "tf-acc-" + randomSuffix()
+
+	before, err := client.GetMember(ctx, org, memberID)
+	if err != nil {
+		t.Fatalf("read member %s: %v", memberID, err)
+	}
+	onTeam := func() (bool, error) {
+		m, err := client.GetMember(ctx, org, memberID)
+		if err != nil {
+			return false, err
+		}
+		return m.InTeam(name), nil
+	}
+
+	header := requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %q
+}
+
+resource "sentry_team" "acc" {
+  name = %q
+}
+`, org, name)
+	withMember := header + fmt.Sprintf(`
+resource "sentry_team_member" "acc" {
+  team_id   = sentry_team.acc.id
+  member_id = %q
+}
+`, memberID)
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			after, err := client.GetMember(ctx, org, memberID)
+			if err != nil {
+				return fmt.Errorf("the member must still exist after destroy: %w", err)
+			}
+			if after.OrgRole != before.OrgRole || len(after.Teams) != len(before.Teams) {
+				return fmt.Errorf("member changed: role %s -> %s, teams %d -> %d", before.OrgRole, after.OrgRole, len(before.Teams), len(after.Teams))
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: header,
+				Check: func(*terraform.State) error {
+					on, err := onTeam()
+					t.Logf("member on the team right after it was created: %t", on)
+					return err
+				},
+			},
+			{
+				PreConfig: func() {
+					if on, _ := onTeam(); on {
+						if err := client.RemoveTeamMember(ctx, org, memberID, name); err != nil {
+							t.Fatalf("take the member off the new team: %v", err)
+						}
+					}
+				},
+				Config: withMember,
+				Check: func(*terraform.State) error {
+					if on, err := onTeam(); err != nil || !on {
+						return fmt.Errorf("member is not on team %s (err %v)", name, err)
+					}
+					return nil
+				},
+			},
+			{Config: withMember, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+			{ResourceName: "sentry_team_member.acc", ImportState: true, ImportStateId: name + "/" + memberID, ImportStateVerify: true},
+			{
+				// Dropping the resource takes the member off the team.
+				Config: header,
+				Check: func(*terraform.State) error {
+					if on, err := onTeam(); err != nil || on {
+						return fmt.Errorf("member is still on team %s (err %v)", name, err)
+					}
+					return nil
+				},
+			},
+		},
+	})
+}
+
+// TestAccOrganizationMember invites SENTRY_TEST_INVITE_EMAIL, which must not
+// be a member yet, puts the pending member on a throwaway team, changes the
+// role and withdraws the invitation. Sentry emails that address.
+func TestAccOrganizationMember(t *testing.T) {
+	testAccPreCheck(t)
+	email := os.Getenv("SENTRY_TEST_INVITE_EMAIL")
+	if email == "" {
+		t.Skip("SENTRY_TEST_INVITE_EMAIL (an address that is not a member yet) is not set")
+	}
+	client, org := testAccClient()
+	ctx := context.Background()
+	if existing, err := client.FindMemberByEmail(ctx, org, email); err != nil {
+		t.Fatalf("list members: %v", err)
+	} else if existing != nil {
+		t.Fatalf("SENTRY_TEST_INVITE_EMAIL is already member %s of %s; refusing to touch an existing member", existing.ID, org)
+	}
+	name := "tf-acc-" + randomSuffix()
+
+	config := func(role string) string {
+		return requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %q
+}
+
+resource "sentry_organization_member" "acc" {
+  email = %q
+  role  = %q
+}
+
+resource "sentry_team" "acc" {
+  name = %q
+}
+
+resource "sentry_team_member" "acc" {
+  team_id   = sentry_team.acc.id
+  member_id = sentry_organization_member.acc.id
+}
+
+data "sentry_organization_member" "acc" {
+  email      = %q
+  depends_on = [sentry_organization_member.acc]
+}
+`, org, email, role, name, email)
+	}
+	var memberID string
+	empty := resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		CheckDestroy: func(*terraform.State) error {
+			if m, err := client.FindMemberByEmail(ctx, org, email); err != nil || m != nil {
+				return fmt.Errorf("the invitation was not withdrawn (member %v, err %v)", m, err)
+			}
+			return nil
+		},
+		Steps: []resource.TestStep{
+			{
+				Config: config("member"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrWith("sentry_organization_member.acc", "id", func(v string) error { memberID = v; return nil }),
+					resource.TestCheckResourceAttr("sentry_organization_member.acc", "role", "member"),
+					resource.TestCheckResourceAttr("sentry_organization_member.acc", "pending", "true"),
+					resource.TestCheckResourceAttrPair("data.sentry_organization_member.acc", "id", "sentry_organization_member.acc", "id"),
+				),
+			},
+			{Config: config("member"), ConfigPlanChecks: empty},
+			{ResourceName: "sentry_organization_member.acc", ImportState: true, ImportStateId: email, ImportStateVerify: true},
+			{
+				ResourceName: "sentry_team_member.acc", ImportState: true, ImportStateVerify: true,
+				ImportStateIdFunc: func(*terraform.State) (string, error) { return name + "/" + memberID, nil },
+			},
+			{
+				Config: config("admin"),
+				ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{
+					plancheck.ExpectResourceAction("sentry_organization_member.acc", plancheck.ResourceActionUpdate),
+				}},
+				Check: resource.TestCheckResourceAttr("sentry_organization_member.acc", "role", "admin"),
+			},
+			{Config: config("admin"), ConfigPlanChecks: empty},
+		},
+	})
+}
