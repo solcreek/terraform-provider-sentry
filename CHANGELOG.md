@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-11
+
 ### Fixed
 
 - `sentry_project_key` and `sentry_project_team` now work with a project slug as
@@ -60,5 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `X-Sentry-Rate-Limit-Reset`, retries of reads after a transport error, and
   actionable credential errors.
 
-[unreleased]: https://github.com/solcreek/terraform-provider-sentry/compare/v0.1.0...HEAD
+[unreleased]: https://github.com/solcreek/terraform-provider-sentry/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/solcreek/terraform-provider-sentry/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/solcreek/terraform-provider-sentry/releases/tag/v0.1.0
