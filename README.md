@@ -30,8 +30,8 @@ pagination, and turns credential errors into actionable messages.
 > **Pre-release.** Every resource and data source passed its acceptance test
 > against sentry.io on 2026-11-11, with two gaps: a client key `rate_limit` that
 > takes effect, which needs a Sentry plan the test organization does not have,
-> and `sentry_organization_data_scrubbing`, whose test would change a real
-> organization's settings and has only run against an in-memory model.
+> and `sentry_organization_data_scrubbing`, which was only tested by writing an
+> organization's current settings back unchanged.
 > Nothing has been released yet, and self-hosted Sentry is untested.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.

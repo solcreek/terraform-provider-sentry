@@ -35,6 +35,7 @@ test-tofu: ## Protocol tests through OpenTofu
 #   they create and delete tf-acc-* teams and projects)
 # Optional: SENTRY_TEST_MEMBER_ID (an existing member, for team membership) and
 #   SENTRY_TEST_INVITE_EMAIL (an address that is not a member; Sentry emails it)
+#   SENTRY_TEST_ORG_SETTINGS=1 (rewrites the organization's data scrubbing settings unchanged)
 testacc:
 	TF_ACC=1 go test -count=1 -timeout 30m -v -run '^TestAcc' ./internal/provider/
 

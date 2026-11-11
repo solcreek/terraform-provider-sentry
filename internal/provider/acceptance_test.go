@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -705,4 +706,71 @@ resource "sentry_project_data_scrubbing" "acc" {
 			{Config: config(switches), ConfigPlanChecks: empty},
 		},
 	})
+}
+
+// TestAccOrganizationDataScrubbing takes over the organization-wide data
+// scrubbing settings without changing them: it reads the current values,
+// declares exactly those, and checks that nothing differs afterwards. It
+// still writes to the organization, so it needs its own opt-in,
+// SENTRY_TEST_ORG_SETTINGS=1.
+func TestAccOrganizationDataScrubbing(t *testing.T) {
+	testAccPreCheck(t)
+	if os.Getenv("SENTRY_TEST_ORG_SETTINGS") != "1" {
+		t.Skip("SENTRY_TEST_ORG_SETTINGS=1 is not set")
+	}
+	client, org := testAccClient()
+	ctx := context.Background()
+	before, err := client.GetOrganizationDataScrubbing(ctx, org)
+	if err != nil {
+		t.Fatalf("read organization settings: %v", err)
+	}
+	quoted := func(fields []string) string {
+		out := make([]string, len(fields))
+		for i, f := range fields {
+			out[i] = fmt.Sprintf("%q", f)
+		}
+		return "[" + strings.Join(out, ", ") + "]"
+	}
+	unchanged := func() error {
+		after, err := client.GetOrganizationDataScrubbing(ctx, org)
+		if err != nil {
+			return err
+		}
+		if fmt.Sprintf("%+v", *after) != fmt.Sprintf("%+v", *before) {
+			return fmt.Errorf("organization settings changed: %+v -> %+v", *before, *after)
+		}
+		return nil
+	}
+	config := requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %q
+}
+
+resource "sentry_organization_data_scrubbing" "acc" {
+  data_scrubber          = %t
+  data_scrubber_defaults = %t
+  scrub_ip_addresses     = %t
+  sensitive_fields       = %s
+  safe_fields            = %s
+}
+`, org, before.DataScrubber, before.DataScrubberDefaults, before.ScrubIPAddresses, quoted(before.SensitiveFields), quoted(before.SafeFields))
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		CheckDestroy:             func(*terraform.State) error { return unchanged() },
+		Steps: []resource.TestStep{
+			{
+				Config: config,
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttrSet("sentry_organization_data_scrubbing.acc", "id"),
+					func(*terraform.State) error { return unchanged() },
+				),
+			},
+			{Config: config, ConfigPlanChecks: resource.ConfigPlanChecks{PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()}}},
+			{ResourceName: "sentry_organization_data_scrubbing.acc", ImportState: true, ImportStateId: "organization", ImportStateVerify: true},
+		},
+	})
+	if err := unchanged(); err != nil {
+		t.Error(err)
+	}
 }

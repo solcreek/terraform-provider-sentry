@@ -40,8 +40,8 @@ const (
 //     its browsers as a list, the other filters a boolean;
 //   - a member update replaces the member's teams with the teamRoles sent;
 //   - a project's data scrubbing settings accept partial updates and store
-//     field names as written (the organization-wide ones follow the API
-//     reference only: they were read, never written, on sentry.io);
+//     field names as written (the organization-wide ones were only written
+//     back unchanged on sentry.io, which the API accepted);
 //   - list endpoints send a Link header that always names a next cursor and
 //     marks it results="false" on the last page;
 //   - errors carry {"detail": "..."} or {"<field>": ["..."]}.
