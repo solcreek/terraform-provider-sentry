@@ -125,8 +125,22 @@ func TestTeamErrors(t *testing.T) {
 				ExpectError: regexp.MustCompile(`lowercase letters`),
 			},
 			{
-				Config:      f.providerConfig() + `resource "sentry_team" "x" { name = "Taken" }`,
+				// An explicit slug that is taken is refused.
+				Config:      f.providerConfig() + "resource \"sentry_team\" \"x\" {\n  name = \"Other\"\n  slug = \"taken\"\n}\n",
 				ExpectError: regexp.MustCompile(`(?s)Unable to create team.*already exists`),
+			},
+			{
+				// A derived one gets a suffix from Sentry instead.
+				Config: f.providerConfig() + `resource "sentry_team" "x" { name = "Taken" }`,
+				Check:  resource.TestMatchResourceAttr("sentry_team.x", "slug", regexp.MustCompile(`^taken-[0-9a-f]+$`)),
+			},
+			{
+				// Renaming onto a taken slug fails, and says why.
+				Config:      f.providerConfig() + "resource \"sentry_team\" \"x\" {\n  name = \"Taken\"\n  slug = \"taken\"\n}\n",
+				ExpectError: regexp.MustCompile(`(?s)Unable to update team.*already in use`),
+			},
+			{
+				Config: f.providerConfig() + `resource "sentry_team" "x" { name = "Taken" }`,
 			},
 		},
 	})

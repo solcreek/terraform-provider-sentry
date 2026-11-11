@@ -21,20 +21,22 @@ const (
 
 // fakeSentry is an in-memory stand-in for the parts of the Sentry API the
 // provider uses, so every resource's Terraform lifecycle can be tested
-// without credentials.
+// without credentials. It mirrors behaviour observed on sentry.io (verified
+// 2026-11-11 with TestAccLifecycle and TestAccAPIFacts):
 //
-// Reads mirror the live API (verified read-only against sentry.io,
-// 2026-11-11): organizations, teams and projects answer to their ID or their
-// slug; IDs are numeric strings, a key's projectId a number; a key's ID is
-// its public key and a project has a "Default" key; list endpoints send a
-// Link header that always names a next cursor and marks it results="false"
-// on the last page; errors carry {"detail": "..."} ("Invalid token" on 401,
-// "Project does not exist" for a missing project).
-//
-// Writes follow Sentry's published API reference and OpenAPI schema only;
-// they have NOT been checked against the live service, so passing lifecycle
-// tests says nothing about live write behaviour (status codes of duplicate
-// slugs, partial updates, scheduled deletes).
+//   - organizations, teams and projects answer to their ID or their slug;
+//     IDs are numeric strings, a key's projectId a number;
+//   - a slug derived from a name that is taken gets a random suffix, while an
+//     explicit slug that is taken is a 409 on create and a 400 on update;
+//   - a new project has one team and a "Default" key; giving a team access
+//     twice, revoking access it does not have and revoking the last team's
+//     are all accepted;
+//   - deleted teams and projects answer 404 at once and free their slug;
+//   - a key's ID is its public key; on a plan without key rate limits the
+//     rateLimit field is accepted and dropped (noRateLimits);
+//   - list endpoints send a Link header that always names a next cursor and
+//     marks it results="false" on the last page;
+//   - errors carry {"detail": "..."} or {"<field>": ["..."]}.
 type fakeSentry struct {
 	t   *testing.T
 	srv *httptest.Server
@@ -91,6 +93,13 @@ provider "sentry" {
 func (f *fakeSentry) id() string {
 	f.next++
 	return strconv.Itoa(4500000000001000 + f.next)
+}
+
+// suffixed makes a derived slug unique the way Sentry does: with a short
+// random-looking suffix.
+func (f *fakeSentry) suffixed(slug string) string {
+	f.next++
+	return fmt.Sprintf("%s-%02x", slug, f.next%256)
 }
 
 func slugify(name string) string {
@@ -326,13 +335,15 @@ func (f *fakeSentry) createTeam(w http.ResponseWriter, body map[string]any) {
 	}
 	if slug == "" {
 		slug = slugify(name)
+		if f.team(slug) != nil {
+			slug = f.suffixed(slug)
+		}
+	} else if f.team(slug) != nil {
+		detail(w, 409, "A team with this slug already exists.")
+		return
 	}
 	if name == "" {
 		name = slug
-	}
-	if f.team(slug) != nil {
-		detail(w, 409, "A team with this slug already exists.")
-		return
 	}
 	t := &fakeTeam{ID: f.id(), Slug: slug, Name: name}
 	f.teams = append(f.teams, t)
@@ -394,8 +405,10 @@ func (f *fakeSentry) createProject(w http.ResponseWriter, teamRef string, body m
 	slug := str(body, "slug")
 	if slug == "" {
 		slug = slugify(name)
-	}
-	if f.project(slug) != nil {
+		if f.project(slug) != nil {
+			slug = f.suffixed(slug)
+		}
+	} else if f.project(slug) != nil {
 		detail(w, 409, "A project with this slug already exists.")
 		return
 	}
@@ -423,7 +436,7 @@ func (f *fakeSentry) serveProject(w http.ResponseWriter, method, ref string, bod
 	case http.MethodPut:
 		if slug := str(body, "slug"); slug != "" {
 			if other := f.project(slug); other != nil && other != p {
-				writeJSON(w, 400, map[string]any{"slug": []string{"Another project is already using that slug"}})
+				writeJSON(w, 400, map[string]any{"slug": []string{"Another project (" + slug + ") is already using that slug"}})
 				return
 			}
 			p.Slug = slug
