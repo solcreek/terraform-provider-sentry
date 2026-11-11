@@ -46,6 +46,7 @@ type fakeSentry struct {
 	next     int
 	teams    []*fakeTeam
 	projects []*fakeProject
+	members  []*fakeMember
 	pageSize int
 	// noRateLimits models a plan without key rate limits: the field is
 	// accepted and dropped, as observed on sentry.io (2026-11-11).
@@ -79,6 +80,13 @@ type fakeOwnership struct {
 
 func newFakeOwnership() fakeOwnership {
 	return fakeOwnership{Fallthrough: true, AutoAssignment: "Auto Assign to Issue Owner", CodeownersAutoSync: true}
+}
+
+// fakeMember is an organization member; TeamIDs are the teams it is on.
+type fakeMember struct {
+	ID, Email, Role string
+	Pending         bool
+	TeamIDs         []string
 }
 
 type fakeKey struct {
@@ -178,6 +186,39 @@ func (f *fakeSentry) project(idOrSlug string) *fakeProject {
 		}
 	}
 	return nil
+}
+
+// addMember inserts an active member, as if they had accepted an invitation.
+func (f *fakeSentry) addMember(email, role string, teams ...*fakeTeam) *fakeMember {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := &fakeMember{ID: f.id(), Email: email, Role: role}
+	for _, t := range teams {
+		m.TeamIDs = append(m.TeamIDs, t.ID)
+	}
+	f.members = append(f.members, m)
+	return m
+}
+
+func (f *fakeSentry) member(id string) *fakeMember {
+	for _, m := range f.members {
+		if m.ID == id {
+			return m
+		}
+	}
+	return nil
+}
+
+func (f *fakeSentry) snapshotMember(id string) *fakeMember {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m := f.member(id)
+	if m == nil {
+		return nil
+	}
+	cp := *m
+	cp.TeamIDs = append([]string(nil), m.TeamIDs...)
+	return &cp
 }
 
 // snapshotProject returns a copy of a project for assertions, or nil.
@@ -317,6 +358,13 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case route == "GET organizations/":
 		writeJSON(w, 200, map[string]any{"id": fakeOrgID, "slug": fakeOrgSlug, "name": "Acme Inc"})
+
+	case parts[0] == "organizations" && len(parts) >= 3 && len(parts) <= 4 && parts[2] == "members":
+		memberID := ""
+		if len(parts) == 4 {
+			memberID = arg(3)
+		}
+		f.serveMembers(w, r, memberID, body)
 
 	case route == "POST organizations/teams":
 		f.createTeam(w, body)
@@ -695,4 +743,83 @@ func (f *fakeSentry) serveFilters(w http.ResponseWriter, method, projectRef, fil
 	}
 	p.Filters[filterID], _ = body["active"].(bool)
 	w.WriteHeader(204)
+}
+
+func (f *fakeSentry) memberJSON(m *fakeMember, withTeams bool) map[string]any {
+	out := map[string]any{"id": m.ID, "email": m.Email, "name": m.Email, "orgRole": m.Role, "role": m.Role, "pending": m.Pending}
+	if withTeams {
+		teams, roles := []any{}, []any{}
+		for _, id := range m.TeamIDs {
+			if t := f.team(id); t != nil {
+				teams = append(teams, t.Slug)
+				roles = append(roles, map[string]any{"teamSlug": t.Slug, "role": nil})
+			}
+		}
+		out["teams"], out["teamRoles"] = teams, roles
+	}
+	return out
+}
+
+// serveMembers models the member endpoints. Reads mirror sentry.io (verified
+// read-only, 2026-11-11): the list has no teams, the detail does, emails are
+// lowercase. The write answers (duplicate invitation, role change) follow the
+// API reference only.
+func (f *fakeSentry) serveMembers(w http.ResponseWriter, r *http.Request, memberID string, body map[string]any) {
+	if memberID == "" {
+		switch r.Method {
+		case http.MethodGet:
+			out := []any{}
+			for _, m := range f.members {
+				out = append(out, f.memberJSON(m, false))
+			}
+			writeJSON(w, 200, out)
+		case http.MethodPost:
+			email := strings.ToLower(str(body, "email"))
+			if email == "" {
+				writeJSON(w, 400, map[string]any{"email": []string{"This field is required."}})
+				return
+			}
+			for _, m := range f.members {
+				if m.Email == email {
+					writeJSON(w, 400, map[string]any{"email": []string{"The user " + email + " has already been invited"}})
+					return
+				}
+			}
+			role := str(body, "orgRole")
+			if role == "" {
+				role = "member"
+			}
+			m := &fakeMember{ID: f.id(), Email: email, Role: role, Pending: true}
+			f.members = append(f.members, m)
+			writeJSON(w, 201, f.memberJSON(m, true))
+		default:
+			w.WriteHeader(405)
+		}
+		return
+	}
+	m := f.member(memberID)
+	if m == nil {
+		notFound(w)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, 200, f.memberJSON(m, true))
+	case http.MethodPut:
+		if role := str(body, "orgRole"); role != "" {
+			m.Role = role
+		}
+		writeJSON(w, 200, f.memberJSON(m, true))
+	case http.MethodDelete:
+		kept := f.members[:0]
+		for _, o := range f.members {
+			if o != m {
+				kept = append(kept, o)
+			}
+		}
+		f.members = kept
+		w.WriteHeader(204)
+	default:
+		w.WriteHeader(405)
+	}
 }

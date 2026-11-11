@@ -302,3 +302,46 @@ func (d *projectKeyDataSource) Read(ctx context.Context, req datasource.ReadRequ
 	cfg.Endpoints = endpoints
 	resp.Diagnostics.Append(resp.State.Set(ctx, &cfg)...)
 }
+
+// ------------------------------------------------- sentry_organization_member
+
+type organizationMemberDataSource struct{ baseDataSource }
+
+func newOrganizationMemberDataSource() datasource.DataSource { return &organizationMemberDataSource{} }
+
+func (d *organizationMemberDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_organization_member"
+}
+
+func (d *organizationMemberDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, resp *datasource.SchemaResponse) {
+	resp.Schema = schema.Schema{
+		MarkdownDescription: "Looks up a member of the organization by email address, for example to put an " +
+			"existing member on a team with `sentry_team_member`.",
+		Attributes: map[string]schema.Attribute{
+			"email":   schema.StringAttribute{Required: true, MarkdownDescription: "Email address of the member (case-insensitive)."},
+			"id":      schema.StringAttribute{Computed: true, MarkdownDescription: "Organization member ID. It is not the user's ID."},
+			"role":    schema.StringAttribute{Computed: true, MarkdownDescription: "Organization role of the member."},
+			"pending": schema.BoolAttribute{Computed: true, MarkdownDescription: "Whether the member's invitation is still waiting to be accepted."},
+		},
+	}
+}
+
+func (d *organizationMemberDataSource) Read(ctx context.Context, req datasource.ReadRequest, resp *datasource.ReadResponse) {
+	var cfg organizationMemberModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &cfg)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	member, err := d.data.client.FindMemberByEmail(ctx, d.data.org, cfg.Email.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to list organization members", err.Error())
+		return
+	}
+	if member == nil {
+		resp.Diagnostics.AddError("Organization member not found",
+			fmt.Sprintf("Organization %s has no member with the email address %s.", d.data.org, cfg.Email.ValueString()))
+		return
+	}
+	cfg.fill(member)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &cfg)...)
+}

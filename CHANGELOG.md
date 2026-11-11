@@ -28,8 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sentry_project_inbound_filter` resource: one of a project's built-in
   inbound data filters, including the browser list of `legacy-browsers`.
   Destroying it turns the filter off. Import by `<project>/<filter_id>`.
-- `sentry_organization`, `sentry_team`, `sentry_project` and
-  `sentry_project_key` data sources.
+- `sentry_organization_member` resource: invites an email address with an
+  organization role and removes the member, or withdraws the invitation, on
+  destroy. Import by email or member ID.
+- `sentry_organization`, `sentry_organization_member`, `sentry_team`,
+  `sentry_project` and `sentry_project_key` data sources.
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and
   self-hosted base URLs, `Link`-header pagination, a cap on concurrent
   requests, rate-limit back-off from `Retry-After` and

@@ -140,6 +140,7 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 		newProjectKeyResource,
 		newProjectOwnershipResource,
 		newProjectInboundFilterResource,
+		newOrganizationMemberResource,
 	}
 }
 
@@ -149,6 +150,7 @@ func (p *sentryProvider) DataSources(_ context.Context) []func() datasource.Data
 		newTeamDataSource,
 		newProjectDataSource,
 		newProjectKeyDataSource,
+		newOrganizationMemberDataSource,
 	}
 }
 

@@ -16,6 +16,9 @@ import (
 // slugPattern is what Sentry accepts as a team or project slug.
 var slugPattern = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
+// emailPattern is a loose shape check; Sentry does the real validation.
+var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
+
 const slugPatternMessage = "must contain only lowercase letters, numbers, dashes and underscores"
 
 // stringOrNull maps Sentry's nullable strings onto Terraform's.
