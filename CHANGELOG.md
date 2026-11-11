@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-11
+
 ### Added
 
 - `sentry_team` resource: a team, tracked by its numeric ID so that renaming it
@@ -47,4 +49,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `X-Sentry-Rate-Limit-Reset`, retries of reads after a transport error, and
   actionable credential errors.
 
-[unreleased]: https://github.com/solcreek/terraform-provider-sentry/commits/main
+[unreleased]: https://github.com/solcreek/terraform-provider-sentry/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/solcreek/terraform-provider-sentry/releases/tag/v0.1.0
