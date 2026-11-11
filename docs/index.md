@@ -7,8 +7,8 @@ description: |-
 # Sentry Provider
 
 An unofficial, community-maintained provider for [Sentry](https://sentry.io), built on the
-[Sentry API](https://docs.sentry.io/api/). It manages teams, projects, team access to
-projects and client keys (DSNs) in one organization, on sentry.io or a self-hosted install.
+[Sentry API](https://docs.sentry.io/api/). It manages teams, members, projects, team access to
+projects, ownership rules, inbound filters and client keys (DSNs) in one organization, on sentry.io or a self-hosted install.
 It supports both OpenTofu and Terraform.
 
 Use the full `registry.opentofu.org/solcreek/sentry` source address with either CLI.
@@ -48,7 +48,10 @@ variable (or the `auth_token` argument). A personal token works too. The token n
 |-----------|--------|
 | `sentry_team` | `team:admin` (create, rename, delete), plus `org:read` |
 | `sentry_project`, `sentry_project_team`, `sentry_project_key` | `project:admin` |
-| data sources only | `org:read`, `team:read`, `project:read` |
+| `sentry_project_ownership`, `sentry_project_inbound_filter` | `project:write` |
+| `sentry_organization_member` | `member:admin` (changing a role needs a personal token) |
+| `sentry_team_member` | `team:write`, `org:write`, `member:read` |
+| data sources only | `org:read`, `team:read`, `project:read`, `member:read` |
 
 A `401` is reported as an invalid, expired or revoked token; a `403` as a missing scope.
 
@@ -62,6 +65,10 @@ A `401` is reported as an invalid, expired or revoked token; a `403` as a missin
   scheduled the deletion. They disappear from the API and free their slug at once.
 - Client key rate limits are not part of every Sentry plan. Where they are missing, Sentry
   drops `rate_limit` silently and the provider reports an error.
+- A project always has an ownership configuration and every inbound filter, so
+  `sentry_project_ownership` and `sentry_project_inbound_filter` take them over when created
+  and reset them (no rules, filter off) when destroyed.
+- `sentry_organization_member` sends an invitation by email when created.
 - `sentry_project.default_rules` only applies when the project is created.
 - Client key secrets (`secret_key`, `dsn_secret`) are marked sensitive but are stored in
   the state, like every attribute. Protect the state accordingly.

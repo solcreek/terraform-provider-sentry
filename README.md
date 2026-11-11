@@ -27,9 +27,12 @@ pagination, and turns credential errors into actionable messages.
 > integrates with.
 
 > [!WARNING]
-> **Pre-release.** Every resource and data source passed its acceptance test
-> against sentry.io on 2026-11-11, but nothing has been released or used in
-> anger yet. Self-hosted Sentry is untested.
+> **Pre-release.** `sentry_team`, `sentry_project`, `sentry_project_team`,
+> `sentry_project_key` and the data sources passed their acceptance tests
+> against sentry.io on 2026-11-11. `sentry_project_ownership`,
+> `sentry_project_inbound_filter`, `sentry_organization_member` and
+> `sentry_team_member` are so far tested only against an in-memory model of
+> the API. Nothing has been released yet, and self-hosted Sentry is untested.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
 
@@ -103,8 +106,10 @@ All resources support `terraform import`.
 Create an [internal integration](https://docs.sentry.io/organization/integrations/integration-platform/#internal-integrations)
 in the organization's settings and supply its token with the `auth_token`
 argument or the `SENTRY_AUTH_TOKEN` environment variable. A personal token works
-too. Managing everything here needs the `org:read`, `team:admin` and
-`project:admin` [scopes](https://docs.sentry.io/api/permissions/).
+too. Managing everything here needs the `org:read`, `team:admin`,
+`project:admin` and, for members, `member:admin`
+[scopes](https://docs.sentry.io/api/permissions/). Sentry only lets a personal
+token change the organization role of an existing member.
 
 `organization` (or `SENTRY_ORG`) names the one organization the provider
 manages. `base_url` (or `SENTRY_BASE_URL`) points it at a self-hosted install or
@@ -139,6 +144,14 @@ What happens with bad credentials:
   under; changing it grants the new team access and then revokes the old one's.
   Other teams get access through `sentry_project_team`. A team whose access was
   revoked in the UI shows up as drift and is restored.
+- **Settings that always exist.** A project always has an ownership
+  configuration and every inbound filter. `sentry_project_ownership` and
+  `sentry_project_inbound_filter` take them over when created; destroying them
+  clears the rules or turns the filter off rather than deleting anything.
+- **Members are invited by email.** Creating `sentry_organization_member`
+  sends an invitation; `pending` tells whether it was accepted. Team
+  membership is separate (`sentry_team_member`), and team roles are not managed
+  yet.
 - **`default_rules` is creation-only.** It controls the alert Sentry creates
   with a new project. Sentry does not report it, so it is not compared later.
 - **Secrets live in the state.** `secret_key` and `dsn_secret` are marked
