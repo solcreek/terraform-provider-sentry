@@ -145,9 +145,10 @@ resource "sentry_project_key" "spare" {
 	})
 }
 
-// On a plan without key rate limits Sentry drops the setting silently; the
-// provider must say so instead of failing with an inconsistent result.
-func TestProjectKeyRateLimitIgnoredByPlan(t *testing.T) {
+// On a plan without key rate limits Sentry would drop the setting silently.
+// The provider must refuse before it writes anything: a key created and then
+// reported as failed is tainted, and replacing it changes the DSN.
+func TestProjectKeyRateLimitUnavailable(t *testing.T) {
 	f := newFakeSentry(t)
 	p := f.addProject("API", f.addTeam("Backend"))
 	f.mutate(func() { f.noRateLimits = true })
@@ -161,25 +162,45 @@ resource "sentry_project_key" "web" {
 `, p.ID, limit)
 	}
 	limit := "  rate_limit = {\n    window = 60\n    count  = 100\n  }"
+	keys := func() []*fakeKey { return f.snapshotProject(p.ID).Keys }
+	var id string
+
 	resource.UnitTest(t, resource.TestCase{
 		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
 				Config:      config(limit),
-				ExpectError: regexp.MustCompile(`Sentry ignored the rate limit`),
+				ExpectError: regexp.MustCompile(`Client key rate limits are not available`),
 			},
 			{
-				// Without the limit the same key settles.
+				// Nothing was created by the refused apply.
+				PreConfig: func() {
+					if n := len(keys()); n != 1 {
+						t.Fatalf("the refused apply left %d keys, want only the Default one", n)
+					}
+				},
 				Config: config(""),
-				Check:  resource.TestCheckNoResourceAttr("sentry_project_key.web", "rate_limit.window"),
+				Check: resource.TestCheckResourceAttrWith("sentry_project_key.web", "id", func(v string) error {
+					id = v
+					return nil
+				}),
 			},
 			{
-				// Adding it later is reported the same way.
+				// Adding a limit later is refused too, and the key is left as it is.
 				Config:      config(limit),
-				ExpectError: regexp.MustCompile(`Sentry ignored the rate limit`),
+				ExpectError: regexp.MustCompile(`Client key rate limits are not available`),
 			},
 			{
 				Config: config(""),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+				Check: resource.TestCheckResourceAttrWith("sentry_project_key.web", "id", func(v string) error {
+					if v != id {
+						return fmt.Errorf("the key was replaced: %s -> %s", id, v)
+					}
+					return nil
+				}),
 			},
 		},
 	})

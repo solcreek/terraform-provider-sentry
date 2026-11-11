@@ -78,19 +78,43 @@ func (m *projectKeyModel) rateLimit() *sentry.RateLimit {
 	return &sentry.RateLimit{Window: m.RateLimit.Window.ValueInt64(), Count: m.RateLimit.Count.ValueInt64()}
 }
 
-// rateLimitIgnored reports that a rate limit was sent and Sentry dropped it.
-// Sentry accepts the field and answers 2xx on plans without key rate limits
-// (the project lacks the "rate-limits" feature), but stores nothing
-// (observed on sentry.io, 2026-11-11).
+// Client key rate limits depend on the Sentry plan: a project without the
+// "rate-limits" feature accepts the field, answers 2xx and stores nothing
+// (observed on sentry.io, 2026-11-11). Left alone that surfaces as an
+// inconsistent result after the key was created, which taints it, so the
+// next apply would replace the key and change its DSN.
+
+const rateLimitUnavailableSummary = "Client key rate limits are not available"
+
+const rateLimitUnavailableDetail = "This project does not have Sentry's `rate-limits` feature, which depends on the " +
+	"organization's plan. Sentry would accept `rate_limit` and silently drop it. Remove `rate_limit` from the " +
+	"configuration, or upgrade the plan."
+
+// rateLimitAvailable checks, before anything is written, that the project
+// can store a rate limit. It adds an error and returns false if not.
+func (r *projectKeyResource) rateLimitAvailable(ctx context.Context, projectID string, diags *diag.Diagnostics) bool {
+	project, err := r.data.client.GetProject(ctx, r.data.org, projectID)
+	if err != nil {
+		diags.AddError("Unable to read project", err.Error())
+		return false
+	}
+	if !project.HasFeature(sentry.FeatureRateLimits) {
+		diags.AddAttributeError(path.Root("rate_limit"), rateLimitUnavailableSummary, rateLimitUnavailableDetail)
+		return false
+	}
+	return true
+}
+
+// rateLimitIgnored is the safety net behind rateLimitAvailable: a rate limit
+// was sent and Sentry still did not store it.
 func rateLimitIgnored(want *sentry.RateLimit, got *sentry.ProjectKey) bool {
 	return want != nil && got.RateLimit == nil
 }
 
 const rateLimitIgnoredSummary = "Sentry ignored the rate limit"
 
-const rateLimitIgnoredDetail = "Sentry accepted the request but did not store `rate_limit`. Client key rate limits " +
-	"are not part of every Sentry plan; without them the API drops the setting silently. Remove `rate_limit` " +
-	"from the configuration, or upgrade the organization's plan."
+const rateLimitIgnoredDetail = "Sentry accepted the request but did not store `rate_limit`. Remove `rate_limit` " +
+	"from the configuration, or check the organization's plan."
 
 func (r *projectKeyResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_project_key"
@@ -126,8 +150,8 @@ func (r *projectKeyResource) Schema(_ context.Context, _ resource.SchemaRequest,
 			},
 			"rate_limit": schema.SingleNestedAttribute{
 				MarkdownDescription: "Cap on the events the key accepts. Without it the key is not rate limited. " +
-					"Not every Sentry plan has key rate limits; where it is missing, Sentry drops the setting " +
-					"and the provider reports an error.",
+					"Needs the project's `rate-limits` feature, which depends on the Sentry plan; without it " +
+					"Sentry would drop the setting, so the provider refuses before changing anything.",
 				Optional: true,
 				Attributes: map[string]schema.Attribute{
 					"window": schema.Int64Attribute{
@@ -186,6 +210,9 @@ func (r *projectKeyResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 	projectID := plan.ProjectID.ValueString()
+	if plan.rateLimit() != nil && !r.rateLimitAvailable(ctx, projectID, &resp.Diagnostics) {
+		return
+	}
 	key, err := r.data.client.CreateProjectKey(ctx, r.data.org, projectID, plan.Name.ValueString(), plan.rateLimit())
 	if err != nil {
 		resp.Diagnostics.AddError("Unable to create client key", err.Error())
@@ -236,6 +263,9 @@ func (r *projectKeyResource) Update(ctx context.Context, req resource.UpdateRequ
 	var plan projectKeyModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	if plan.rateLimit() != nil && !r.rateLimitAvailable(ctx, plan.ProjectID.ValueString(), &resp.Diagnostics) {
 		return
 	}
 	key, err := r.data.client.UpdateProjectKey(ctx, r.data.org, plan.ProjectID.ValueString(), plan.ID.ValueString(), sentry.UpdateProjectKeyInput{

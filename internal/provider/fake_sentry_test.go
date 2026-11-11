@@ -55,8 +55,9 @@ type fakeSentry struct {
 	// closedTeams makes adding a member answer 202 (an access request), as
 	// Sentry does when the token may not add members to a team directly.
 	closedTeams bool
-	// noRateLimits models a plan without key rate limits: the field is
-	// accepted and dropped, as observed on sentry.io (2026-11-11).
+	// noRateLimits models a plan without key rate limits: projects lack the
+	// "rate-limits" feature, and a key's rateLimit is accepted and dropped,
+	// as observed on sentry.io (2026-11-11).
 	noRateLimits bool
 }
 
@@ -292,7 +293,11 @@ func (f *fakeSentry) projectJSON(p *fakeProject) map[string]any {
 			teams = append(teams, f.teamJSON(t))
 		}
 	}
-	return map[string]any{"id": p.ID, "slug": p.Slug, "name": p.Name, "platform": p.Platform, "teams": teams}
+	features := []string{"servicehooks"}
+	if !f.noRateLimits {
+		features = append(features, "rate-limits")
+	}
+	return map[string]any{"id": p.ID, "slug": p.Slug, "name": p.Name, "platform": p.Platform, "teams": teams, "features": features}
 }
 
 func (f *fakeSentry) keyJSON(p *fakeProject, k *fakeKey) map[string]any {

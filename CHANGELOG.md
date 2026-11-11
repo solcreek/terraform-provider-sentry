@@ -20,8 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `sentry_project_key` resource: a client key with an optional rate limit and
   `is_active`; exports the DSNs and the other ingestion endpoints. Import by
   `<project>/<key_id>`. Where the organization's plan has no key rate
-  limits, Sentry drops `rate_limit` silently; the provider reports that as an
-  error.
+  limits, Sentry would drop `rate_limit` silently; the provider checks the
+  project's `rate-limits` feature first and refuses before creating or
+  changing the key.
 - `sentry_project_ownership` resource: a project's issue ownership rules,
   fallthrough and auto-assignment. Destroying it clears the rules. Import by
   project slug or ID.

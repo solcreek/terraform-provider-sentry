@@ -15,6 +15,24 @@ type Project struct {
 	Name     string  `json:"name"`
 	Platform *string `json:"platform"`
 	Teams    []Team  `json:"teams"`
+	// Features lists the plan-dependent features the project has, e.g.
+	// "rate-limits".
+	Features []string `json:"features"`
+}
+
+// FeatureRateLimits is the project feature behind client key rate limits.
+// Without it Sentry accepts a key's rateLimit and stores nothing: both key
+// endpoints only read the field under features.has("projects:rate-limits").
+const FeatureRateLimits = "rate-limits"
+
+// HasFeature reports whether the project has a feature.
+func (p *Project) HasFeature(name string) bool {
+	for _, f := range p.Features {
+		if f == name {
+			return true
+		}
+	}
+	return false
 }
 
 // HasTeam reports whether the team with this ID has access to the project.

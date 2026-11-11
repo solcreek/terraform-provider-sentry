@@ -43,8 +43,8 @@ A `401` is reported as an invalid, expired or revoked token; a `403` as a missin
   deletes its events and Sentry has no undo. Apply `false` before destroying.
 - Sentry deletes teams and projects asynchronously: a destroy returns once Sentry has
   scheduled the deletion. They disappear from the API and free their slug at once.
-- Client key rate limits are not part of every Sentry plan. Where they are missing, Sentry
-  drops `rate_limit` silently and the provider reports an error.
+- Client key rate limits are not part of every Sentry plan. Where the project lacks the
+  `rate-limits` feature, the provider refuses `rate_limit` before creating or changing the key.
 - A project always has an ownership configuration and every inbound filter, so
   `sentry_project_ownership` and `sentry_project_inbound_filter` take them over when created
   and reset them (no rules, filter off) when destroyed.

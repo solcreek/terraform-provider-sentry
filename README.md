@@ -135,9 +135,10 @@ What happens with bad credentials:
 - **Deletes are scheduled.** Sentry deletes teams and projects asynchronously;
   a destroy returns once the deletion is scheduled. They disappear from the API
   and free their slug at once.
-- **Client key rate limits depend on the plan.** Where the organization's plan
-  has none, Sentry accepts `rate_limit` and silently drops it; the provider
-  reports that as an error rather than pretending it applied.
+- **Client key rate limits depend on the plan.** Without the project's
+  `rate-limits` feature, Sentry accepts `rate_limit` and silently drops it. The
+  provider checks the feature first and refuses before it creates or changes
+  the key, so a key is never left tainted and its DSN never churns.
 - **Project teams.** `sentry_project.team_id` is the team the project is created
   under; changing it grants the new team access and then revokes the old one's.
   Other teams get access through `sentry_project_team`. A team whose access was
