@@ -4,6 +4,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
@@ -98,6 +99,19 @@ func (r *organizationMemberResource) Create(ctx context.Context, req resource.Cr
 	var plan organizationMemberModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+	// Never adopt an existing member by inviting them again: destroying this
+	// resource would then remove someone it did not add.
+	existing, err := r.data.client.FindMemberByEmail(ctx, r.data.org, plan.Email.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to list organization members", err.Error())
+		return
+	}
+	if existing != nil {
+		resp.Diagnostics.AddAttributeError(path.Root("email"), "Already a member of the organization",
+			fmt.Sprintf("%s is already a member of the organization (or has a pending invitation). "+
+				"To manage that member, import it: terraform import <address> %s", existing.Email, existing.Email))
 		return
 	}
 	member, err := r.data.client.InviteMember(ctx, r.data.org, plan.Email.ValueString(), plan.Role.ValueString())

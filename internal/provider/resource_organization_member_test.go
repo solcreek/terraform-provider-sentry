@@ -113,7 +113,12 @@ func TestOrganizationMemberErrors(t *testing.T) {
 		Steps: []resource.TestStep{
 			{Config: one(`  email = "not an email"`), ExpectError: regexp.MustCompile(`must be an email address`)},
 			{Config: one("  email = \"a@example.com\"\n  role  = \"root\""), ExpectError: regexp.MustCompile(`(?i)value must be one of`)},
-			{Config: one(`  email = "owner@example.com"`), ExpectError: regexp.MustCompile(`(?s)Unable to invite organization member.*already\s+been\s+invited`)},
+			{
+				// An existing member is never adopted by inviting them again,
+				// whatever the case of the address: no request is sent.
+				Config:      one(`  email = "Owner@Example.com"`),
+				ExpectError: regexp.MustCompile(`Already a member of the organization`),
+			},
 			{
 				Config:      f.providerConfig() + `data "sentry_organization_member" "x" { email = "nobody@example.com" }`,
 				ExpectError: regexp.MustCompile(`Organization member not found`),
