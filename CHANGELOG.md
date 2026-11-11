@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<project>/<key_id>`. Where the organization's plan has no key rate
   limits, Sentry drops `rate_limit` silently; the provider reports that as an
   error.
+- `sentry_project_ownership` resource: a project's issue ownership rules,
+  fallthrough and auto-assignment. Destroying it clears the rules. Import by
+  project slug or ID.
 - `sentry_organization`, `sentry_team`, `sentry_project` and
   `sentry_project_key` data sources.
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and

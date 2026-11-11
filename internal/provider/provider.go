@@ -138,6 +138,7 @@ func (p *sentryProvider) Resources(_ context.Context) []func() resource.Resource
 		newProjectResource,
 		newProjectTeamResource,
 		newProjectKeyResource,
+		newProjectOwnershipResource,
 	}
 }
 

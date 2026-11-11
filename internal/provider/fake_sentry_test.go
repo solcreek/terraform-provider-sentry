@@ -61,6 +61,19 @@ type fakeProject struct {
 	DefaultRules   bool
 	TeamIDs        []string
 	Keys           []*fakeKey
+	Ownership      fakeOwnership
+}
+
+// fakeOwnership starts out the way a new project's does on sentry.io.
+type fakeOwnership struct {
+	Raw                *string
+	Fallthrough        bool
+	AutoAssignment     string
+	CodeownersAutoSync bool
+}
+
+func newFakeOwnership() fakeOwnership {
+	return fakeOwnership{Fallthrough: true, AutoAssignment: "Auto Assign to Issue Owner", CodeownersAutoSync: true}
 }
 
 type fakeKey struct {
@@ -130,7 +143,7 @@ func (f *fakeSentry) addTeam(name string) *fakeTeam {
 func (f *fakeSentry) addProject(name string, teams ...*fakeTeam) *fakeProject {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	p := &fakeProject{ID: f.id(), Slug: slugify(name), Name: name, DefaultRules: true}
+	p := &fakeProject{ID: f.id(), Slug: slugify(name), Name: name, DefaultRules: true, Ownership: newFakeOwnership()}
 	for _, t := range teams {
 		p.TeamIDs = append(p.TeamIDs, t.ID)
 	}
@@ -307,6 +320,9 @@ func (f *fakeSentry) serve(w http.ResponseWriter, r *http.Request) {
 	case parts[0] == "projects" && len(parts) == 3:
 		f.serveProject(w, r.Method, arg(2), body)
 
+	case parts[0] == "projects" && len(parts) == 4 && parts[3] == "ownership":
+		f.serveOwnership(w, r.Method, arg(2), body)
+
 	case parts[0] == "projects" && len(parts) == 5 && parts[3] == "teams":
 		f.serveProjectTeam(w, r.Method, arg(2), arg(4))
 
@@ -412,7 +428,7 @@ func (f *fakeSentry) createProject(w http.ResponseWriter, teamRef string, body m
 		detail(w, 409, "A project with this slug already exists.")
 		return
 	}
-	p := &fakeProject{ID: f.id(), Slug: slug, Name: name, TeamIDs: []string{t.ID}, DefaultRules: true}
+	p := &fakeProject{ID: f.id(), Slug: slug, Name: name, TeamIDs: []string{t.ID}, DefaultRules: true, Ownership: newFakeOwnership()}
 	if platform := str(body, "platform"); platform != "" {
 		p.Platform = &platform
 	}
@@ -568,4 +584,44 @@ func (f *fakeSentry) listKeys(w http.ResponseWriter, r *http.Request, p *fakePro
 		`<%s?&cursor=0:%d:1>; rel="previous"; results="%t"; cursor="0:%d:1", <%s?&cursor=0:%d:0>; rel="next"; results="%t"; cursor="0:%d:0"`,
 		base, offset, offset > 0, offset, base, end, end < len(p.Keys), end))
 	writeJSON(w, 200, page)
+}
+
+func (f *fakeSentry) serveOwnership(w http.ResponseWriter, method, projectRef string, body map[string]any) {
+	p := f.project(projectRef)
+	if p == nil {
+		detail(w, http.StatusNotFound, "Project does not exist")
+		return
+	}
+	o := &p.Ownership
+	switch method {
+	case http.MethodGet:
+	case http.MethodPut:
+		if raw, ok := body["raw"].(string); ok {
+			if strings.Contains(raw, "not-a-rule") {
+				writeJSON(w, 400, map[string]any{"raw": []string{"Parse error: 'ownership' (line 1, column 1)"}})
+				return
+			}
+			o.Raw = &raw
+			if raw == "" {
+				o.Raw = nil
+			}
+		}
+		if v, ok := body["fallthrough"].(bool); ok {
+			o.Fallthrough = v
+		}
+		if v, ok := body["autoAssignment"].(string); ok {
+			o.AutoAssignment = v
+		}
+		if v, ok := body["codeownersAutoSync"].(bool); ok {
+			o.CodeownersAutoSync = v
+		}
+	default:
+		w.WriteHeader(405)
+		return
+	}
+	writeJSON(w, 200, map[string]any{
+		"raw": o.Raw, "fallthrough": o.Fallthrough, "autoAssignment": o.AutoAssignment,
+		"codeownersAutoSync": o.CodeownersAutoSync, "isActive": true, "schema": nil,
+		"dateCreated": nil, "lastUpdated": nil,
+	})
 }

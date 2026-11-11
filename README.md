@@ -86,6 +86,7 @@ See [`examples/`](./examples) for every resource and data source.
 | resource | `sentry_project` | A project owned by a team. Deletion protected by default. |
 | resource | `sentry_project_team` | Give one more team access to a project. |
 | resource | `sentry_project_key` | A client key: DSNs, rate limit, active or not. |
+| resource | `sentry_project_ownership` | A project's issue ownership rules and auto-assignment. |
 | data | `sentry_organization` | The organization the provider is configured for. |
 | data | `sentry_team` | Look up a team by slug or ID. |
 | data | `sentry_project` | Look up a project by slug or ID, with the teams that have access. |
