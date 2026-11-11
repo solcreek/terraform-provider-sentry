@@ -162,9 +162,6 @@ data "sentry_project_key" "default" {
 // project it manages to create, expected or not, is deleted again.
 func TestAccAPIFacts(t *testing.T) {
 	testAccPreCheck(t)
-	if os.Getenv("TF_ACC") == "" {
-		t.Skip("TF_ACC not set")
-	}
 	client, org := testAccClient()
 	ctx := context.Background()
 	name := "tf-acc-facts-" + randomSuffix()

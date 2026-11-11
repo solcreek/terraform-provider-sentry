@@ -51,9 +51,13 @@ var testProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, 
 //   - SENTRY_TEST_ORG    slug of a dedicated organization the tests may write to
 //
 // The organization comes from SENTRY_TEST_ORG, never SENTRY_ORG, so the tests
-// cannot land in an everyday organization by accident.
+// cannot land in an everyday organization by accident. Without TF_ACC the
+// test is skipped.
 func testAccPreCheck(t *testing.T) {
 	t.Helper()
+	if os.Getenv("TF_ACC") == "" {
+		t.Skip("acceptance tests are skipped unless TF_ACC is set")
+	}
 	if os.Getenv("SENTRY_AUTH_TOKEN") == "" {
 		t.Fatal("SENTRY_AUTH_TOKEN must be set for acceptance tests")
 	}
