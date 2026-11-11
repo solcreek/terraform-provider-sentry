@@ -43,7 +43,7 @@ resource "sentry_project" "api" {
 - `default_rules` (Boolean) Whether Sentry creates its default alert, which notifies on every new issue, with the project. Sentry's default is `true`. Only applies at creation: Sentry does not report it, so later changes have no effect.
 - `deletion_protection` (Boolean) Refuse to delete the project. Defaults to `true`, because deleting a project deletes its events and Sentry has no undo. Apply `false` before destroying.
 - `platform` (String) Platform of the project, e.g. `python-django` or `javascript-react`. Removing it from the configuration leaves the platform as it is.
-- `slug` (String) Slug that identifies the project in URLs. When unset, Sentry derives it from the name at creation, and it then stays as it is when the name changes.
+- `slug` (String) Slug that identifies the project in URLs. When unset, Sentry derives it from the name at creation (adding a suffix if that slug is taken), and it then stays as it is when the name changes.
 
 ### Read-Only
 

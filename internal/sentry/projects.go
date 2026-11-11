@@ -57,8 +57,8 @@ func (c *Client) GetProject(ctx context.Context, org, project string) (*Project,
 
 // UpdateProjectInput is a partial update: nil fields are left unchanged.
 // Sentry's schema lists some unrelated fields as required on this endpoint,
-// while its API reference says updates accept partial data; this follows the
-// reference.
+// but the live API accepts partial data, as its reference says (verified on
+// sentry.io, 2026-11-11).
 type UpdateProjectInput struct {
 	Name     *string `json:"name,omitempty"`
 	Slug     *string `json:"slug,omitempty"`

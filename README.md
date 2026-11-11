@@ -27,10 +27,9 @@ pagination, and turns credential errors into actionable messages.
 > integrates with.
 
 > [!WARNING]
-> **Pre-release.** The data sources were verified read-only against sentry.io
-> on 2026-11-11. The resources (everything that writes) are so far tested only
-> against an in-memory model of the Sentry API built from Sentry's published
-> reference, not against the live service.
+> **Pre-release.** Every resource and data source passed its acceptance test
+> against sentry.io on 2026-11-11, but nothing has been released or used in
+> anger yet. Self-hosted Sentry is untested.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
 
@@ -120,12 +119,17 @@ What happens with bad credentials:
   project. Resources are tracked by numeric ID and reference each other by `id`,
   so a rename, in Terraform or in the Sentry UI, is an in-place update and never
   a replacement. When `slug` is unset, Sentry derives it from the name once, at
-  creation.
+  creation, adding a short suffix if that slug is taken; an explicit `slug`
+  that is taken is an error.
 - **Deleting a project is guarded.** `sentry_project` defaults to
   `deletion_protection = true`: a delete removes the project's events and Sentry
   has no undo. Apply `deletion_protection = false` first.
 - **Deletes are scheduled.** Sentry deletes teams and projects asynchronously;
-  a destroy returns once the deletion is scheduled.
+  a destroy returns once the deletion is scheduled. They disappear from the API
+  and free their slug at once.
+- **Client key rate limits depend on the plan.** Where the organization's plan
+  has none, Sentry accepts `rate_limit` and silently drops it; the provider
+  reports that as an error rather than pretending it applied.
 - **Project teams.** `sentry_project.team_id` is the team the project is created
   under; changing it grants the new team access and then revokes the old one's.
   Other teams get access through `sentry_project_team`. A team whose access was

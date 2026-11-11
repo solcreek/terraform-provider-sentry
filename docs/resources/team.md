@@ -28,7 +28,7 @@ resource "sentry_team" "backend" {
 
 ### Optional
 
-- `slug` (String) Slug that identifies the team in URLs. When unset, Sentry derives it from the name at creation, and it then stays as it is when the name changes.
+- `slug` (String) Slug that identifies the team in URLs. When unset, Sentry derives it from the name at creation (adding a suffix if that slug is taken), and it then stays as it is when the name changes.
 
 ### Read-Only
 

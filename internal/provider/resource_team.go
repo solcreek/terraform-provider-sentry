@@ -62,7 +62,7 @@ func (r *teamResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 			},
 			"slug": schema.StringAttribute{
 				MarkdownDescription: "Slug that identifies the team in URLs. When unset, Sentry derives it from " +
-					"the name at creation, and it then stays as it is when the name changes.",
+					"the name at creation (adding a suffix if that slug is taken), and it then stays as it is when the name changes.",
 				Optional:      true,
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},

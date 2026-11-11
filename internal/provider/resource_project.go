@@ -73,7 +73,7 @@ func (r *projectResource) Schema(_ context.Context, _ resource.SchemaRequest, re
 			},
 			"slug": schema.StringAttribute{
 				MarkdownDescription: "Slug that identifies the project in URLs. When unset, Sentry derives it " +
-					"from the name at creation, and it then stays as it is when the name changes.",
+					"from the name at creation (adding a suffix if that slug is taken), and it then stays as it is when the name changes.",
 				Optional:      true,
 				Computed:      true,
 				PlanModifiers: []planmodifier.String{stringplanmodifier.UseStateForUnknown()},

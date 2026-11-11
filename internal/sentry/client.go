@@ -5,9 +5,10 @@
 // Terraform provider needs: organizations, teams, projects, a project's team
 // access and its client keys.
 //
-// Everything here follows Sentry's published API reference and OpenAPI
-// schema. Sentry's writes are synchronous, except deletes of teams and
-// projects, which Sentry only schedules.
+// It follows Sentry's published API reference and was checked against
+// sentry.io (2026-11-11). Sentry's writes are synchronous. Deletes of teams
+// and projects are only scheduled, but both stop answering (404) and free
+// their slug at once.
 package sentry
 
 import (

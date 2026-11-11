@@ -59,7 +59,9 @@ A `401` is reported as an invalid, expired or revoked token; a `403` as a missin
 - `sentry_project` defaults to `deletion_protection = true`, because deleting a project
   deletes its events and Sentry has no undo. Apply `false` before destroying.
 - Sentry deletes teams and projects asynchronously: a destroy returns once Sentry has
-  scheduled the deletion.
+  scheduled the deletion. They disappear from the API and free their slug at once.
+- Client key rate limits are not part of every Sentry plan. Where they are missing, Sentry
+  drops `rate_limit` silently and the provider reports an error.
 - `sentry_project.default_rules` only applies when the project is created.
 - Client key secrets (`secret_key`, `dsn_secret`) are marked sensitive but are stored in
   the state, like every attribute. Protect the state accordingly.
