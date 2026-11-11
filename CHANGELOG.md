@@ -30,7 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Destroying it turns the filter off. Import by `<project>/<filter_id>`.
 - `sentry_organization_member` resource: invites an email address with an
   organization role and removes the member, or withdraws the invitation, on
-  destroy. Import by email or member ID.
+  destroy. An address that is already a member is refused, and a role change
+  keeps the member's teams. Import by email or member ID.
 - `sentry_team_member` resource: puts an organization member on a team.
   Import by `<team>/<member_id>`.
 - `sentry_organization`, `sentry_organization_member`, `sentry_team`,
@@ -38,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dependency-free Sentry API client: bearer-token auth, sentry.io, region and
   self-hosted base URLs, `Link`-header pagination, a cap on concurrent
   requests, rate-limit back-off from `Retry-After` and
-  `X-Sentry-Rate-Limit-Reset`, and actionable credential errors.
+  `X-Sentry-Rate-Limit-Reset`, retries of reads after a transport error, and
+  actionable credential errors.
 
 [unreleased]: https://github.com/solcreek/terraform-provider-sentry/commits/main

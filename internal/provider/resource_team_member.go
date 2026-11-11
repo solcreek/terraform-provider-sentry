@@ -44,7 +44,8 @@ func (r *teamMemberResource) Metadata(_ context.Context, req resource.MetadataRe
 func (r *teamMemberResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Puts an organization member on a team. The member keeps the team role Sentry " +
-			"gives them by default; team roles are not managed yet.",
+			"gives them by default; team roles are not managed yet. Members whose invitation is still " +
+			"pending can be put on teams too.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "`<team_id>/<member_id>`.",

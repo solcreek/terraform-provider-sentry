@@ -27,12 +27,10 @@ pagination, and turns credential errors into actionable messages.
 > integrates with.
 
 > [!WARNING]
-> **Pre-release.** `sentry_team`, `sentry_project`, `sentry_project_team`,
-> `sentry_project_key` and the data sources passed their acceptance tests
-> against sentry.io on 2026-11-11. `sentry_project_ownership`,
-> `sentry_project_inbound_filter`, `sentry_organization_member` and
-> `sentry_team_member` are so far tested only against an in-memory model of
-> the API. Nothing has been released yet, and self-hosted Sentry is untested.
+> **Pre-release.** Every resource and data source passed its acceptance test
+> against sentry.io on 2026-11-11, with one gap: a client key `rate_limit` that
+> takes effect, which needs a Sentry plan the test organization does not have.
+> Nothing has been released yet, and self-hosted Sentry is untested.
 
 Proudly built for the open-source IaC ecosystem and dedicated to **OpenTofu**.
 
@@ -149,15 +147,21 @@ What happens with bad credentials:
   `sentry_project_inbound_filter` take them over when created; destroying them
   clears the rules or turns the filter off rather than deleting anything.
 - **Members are invited by email.** Creating `sentry_organization_member`
-  sends an invitation; `pending` tells whether it was accepted. Team
-  membership is separate (`sentry_team_member`), and team roles are not managed
-  yet.
+  sends an invitation; `pending` tells whether it was accepted, and a pending
+  member can already be put on teams. An address that is already a member is
+  refused rather than adopted: import it instead. Team membership is separate
+  (`sentry_team_member`), survives a change of organization role, and team
+  roles are not managed yet.
+- **Team creators join their team.** A team created with a personal token
+  starts with that token's user as a member. Declaring the same membership
+  with `sentry_team_member` then fails with a hint to import it.
 - **`default_rules` is creation-only.** It controls the alert Sentry creates
   with a new project. Sentry does not report it, so it is not compared later.
 - **Secrets live in the state.** `secret_key` and `dsn_secret` are marked
   sensitive, which hides them from plan output only.
 - **Rate limits.** Requests are capped at four in flight; a `429` is retried
   after `Retry-After` or the window reset Sentry reports, at most five times.
+  A read that fails on the network is repeated up to twice; a write never is.
 
 ## Development
 

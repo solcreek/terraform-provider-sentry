@@ -31,7 +31,10 @@ test-tofu: ## Protocol tests through OpenTofu
 	./scripts/test-protocol.sh tofu
 
 # Acceptance tests hit the real Sentry API. Required env:
-#   SENTRY_AUTH_TOKEN, SENTRY_TEST_ORG (slug of a dedicated organization the tests may write to)
+#   SENTRY_AUTH_TOKEN, SENTRY_TEST_ORG (slug of an organization the tests may write to;
+#   they create and delete tf-acc-* teams and projects)
+# Optional: SENTRY_TEST_MEMBER_ID (an existing member, for team membership) and
+#   SENTRY_TEST_INVITE_EMAIL (an address that is not a member; Sentry emails it)
 testacc:
 	TF_ACC=1 go test -count=1 -timeout 30m -v -run '^TestAcc' ./internal/provider/
 

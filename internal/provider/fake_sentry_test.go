@@ -35,6 +35,10 @@ const (
 //   - deleted teams and projects answer 404 at once and free their slug;
 //   - a key's ID is its public key; on a plan without key rate limits the
 //     rateLimit field is accepted and dropped (noRateLimits);
+//   - ownership rules are stored without surrounding whitespace; the
+//     legacy-browsers filter is addressed as "legacy-browsers" and reports
+//     its browsers as a list, the other filters a boolean;
+//   - a member update replaces the member's teams with the teamRoles sent;
 //   - list endpoints send a Link header that always names a next cursor and
 //     marks it results="false" on the last page;
 //   - errors carry {"detail": "..."} or {"<field>": ["..."]}.
@@ -848,9 +852,10 @@ func (f *fakeSentry) serveMembers(w http.ResponseWriter, r *http.Request, member
 	}
 }
 
-// serveMemberTeam models team membership following the API reference: adding
-// answers 201, or 204 when the member is already on the team, or 202 when
-// only an access request was filed. Not yet verified live.
+// serveMemberTeam models team membership. Adding and removing a member,
+// pending ones included, was verified on sentry.io (2026-11-11). The 204 for
+// a member already on the team and the 202 for an access request follow the
+// API reference only.
 func (f *fakeSentry) serveMemberTeam(w http.ResponseWriter, method, memberID, teamRef string) {
 	m, t := f.member(memberID), f.team(teamRef)
 	if m == nil || t == nil {

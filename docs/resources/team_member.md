@@ -3,12 +3,12 @@
 page_title: "sentry_team_member Resource - sentry"
 subcategory: ""
 description: |-
-  Puts an organization member on a team. The member keeps the team role Sentry gives them by default; team roles are not managed yet.
+  Puts an organization member on a team. The member keeps the team role Sentry gives them by default; team roles are not managed yet. Members whose invitation is still pending can be put on teams too.
 ---
 
 # sentry_team_member (Resource)
 
-Puts an organization member on a team. The member keeps the team role Sentry gives them by default; team roles are not managed yet.
+Puts an organization member on a team. The member keeps the team role Sentry gives them by default; team roles are not managed yet. Members whose invitation is still pending can be put on teams too.
 
 ## Example Usage
 

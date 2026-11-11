@@ -48,7 +48,8 @@ func (r *teamResource) Metadata(_ context.Context, req resource.MetadataRequest,
 func (r *teamResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "A team in the organization. The team is tracked by its numeric ID, so changing " +
-			"`name` or `slug` renames it in place.",
+			"`name` or `slug` renames it in place. A team created with a personal token starts with " +
+			"that token's user as a member.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				MarkdownDescription: "Team ID. Unlike the slug, it never changes; reference teams by it.",
