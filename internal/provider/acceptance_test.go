@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -539,6 +540,111 @@ data "sentry_organization_member" "acc" {
 				Check: resource.TestCheckResourceAttr("sentry_organization_member.acc", "role", "admin"),
 			},
 			{Config: config("admin"), ConfigPlanChecks: empty},
+		},
+	})
+}
+
+// TestAccProjectKeyRateLimit checks a client key rate limit on whichever kind
+// of plan the organization has: stored where projects have the rate-limits
+// feature, and refused before anything is created where they do not.
+func TestAccProjectKeyRateLimit(t *testing.T) {
+	testAccPreCheck(t)
+	client, org := testAccClient()
+	ctx := context.Background()
+	name := "tf-acc-" + randomSuffix()
+
+	header := requiredProviders + fmt.Sprintf(`
+provider "sentry" {
+  organization = %q
+}
+
+resource "sentry_team" "acc" {
+  name = %q
+}
+
+resource "sentry_project" "acc" {
+  name                = %q
+  team_id             = sentry_team.acc.id
+  default_rules       = false
+  deletion_protection = false
+}
+`, org, name, name)
+	limited := header + `
+resource "sentry_project_key" "acc" {
+  project_id = sentry_project.acc.id
+  name       = "tf-acc"
+
+  rate_limit = {
+    window = 60
+    count  = 100
+  }
+}
+`
+	available := false
+	steps := []resource.TestStep{
+		{
+			Config: header,
+			Check: func(*terraform.State) error {
+				p, err := client.GetProject(ctx, org, name)
+				if err != nil {
+					return err
+				}
+				available = p.HasFeature(sentry.FeatureRateLimits)
+				t.Logf("project has the %s feature: %t", sentry.FeatureRateLimits, available)
+				return nil
+			},
+		},
+		{
+			// Which of the two outcomes is right depends on the plan, known
+			// only after the first step, so both are checked by hand.
+			Config:             limited,
+			ExpectNonEmptyPlan: true,
+			PlanOnly:           true,
+		},
+	}
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: append(steps, resource.TestStep{
+			PreConfig: func() {
+				key, err := client.CreateProjectKey(ctx, org, name, "tf-acc-direct", &sentry.RateLimit{Window: 60, Count: 100})
+				if err != nil {
+					t.Fatalf("create key: %v", err)
+				}
+				t.Logf("key created directly with a rate limit: stored = %v", key.RateLimit)
+				if (key.RateLimit != nil) != available {
+					t.Errorf("the rate-limits feature (%t) does not predict whether Sentry stores a rate limit (%t)", available, key.RateLimit != nil)
+				}
+				if err := client.DeleteProjectKey(ctx, org, name, key.ID); err != nil {
+					t.Errorf("delete key: %v", err)
+				}
+			},
+			Config: header,
+		}),
+	})
+
+	if available {
+		t.Log("rate limits are available here; the refusal path was not exercised")
+		return
+	}
+	// The refusal, end to end, on a second throwaway project.
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{Config: header},
+			{Config: limited, ExpectError: regexp.MustCompile(`Client key rate limits are not available`)},
+			{
+				PreConfig: func() {
+					keys, err := client.ListProjectKeys(ctx, org, name)
+					if err != nil {
+						t.Fatalf("list keys: %v", err)
+					}
+					if len(keys) != 1 {
+						t.Errorf("the refused apply left %d keys, want only the Default one", len(keys))
+					}
+				},
+				Config: header,
+			},
 		},
 	})
 }
